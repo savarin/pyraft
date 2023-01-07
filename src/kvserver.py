@@ -9,7 +9,7 @@ class KVApplication:
         return key in self.data
 
     def get(self, key):
-        return self.data.get(key)
+        return self.data.get(key, None)
 
     def set(self, key, value):
         self.data[key] = value
@@ -33,29 +33,19 @@ class KVServer:
     def handle(self, request):
         command, *arguments = request.split(" ")
 
-        # TODO: Check request validity and return codes in separate method.
         if command == "set":
             assert len(arguments) == 2
             self.app.set(arguments[0], arguments[1])
-            return True, None
+            return None
 
-        # TODO: Consider removing existence check to simplify interface.
         elif command == "get":
             assert len(arguments) == 1
-
-            if self.app.has(arguments[0]):
-                return True, self.app.get(arguments[0])
-
-            return False, None
+            return self.app.get(arguments[0])
 
         elif command == "delete":
             assert len(arguments) == 1
-
-            if self.app.has(arguments[0]):
-                self.app.delete(arguments[0])
-                return True, None
-
-            return False, None
+            self.app.delete(arguments[0])
+            return None
 
     def run(self):
         while True:
@@ -65,20 +55,13 @@ class KVServer:
             try:
                 while True:
                     # TODO: Log requests and response.
-                    request = client.recv(32)
+                    request = client.recv(32).decode("ascii")
 
-                    if request != b"":
-                        # TODO: Use bencode for request and response.
-                        is_valid, result = self.handle(request.decode("ascii"))
+                    # TODO: Use bencode for request and response.
+                    response = self.handle(request)
+                    print(request, response)
 
-                        if result is not None:
-                            response = result
-                        else:
-                            response = "ok" if is_valid else "invalid"
-
-                        print(request.decode("ascii"), response)
-
-                        client.sendall(response.encode("ascii"))
+                    client.sendall((response or "ok").encode("ascii"))
 
             except IOError:
                 client.close()
