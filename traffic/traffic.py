@@ -3,9 +3,9 @@
 # Implement traffic light control software.
 #
 # Challenge:  Make something that can be tested/debugged.
-from dataclasses import dataclass
-from socket import socket, AF_INET, SOCK_DGRAM
+import dataclasses
 import queue
+import socket
 import time
 import threading
 
@@ -18,10 +18,10 @@ colors_by_state = {
 }
 
 sleep_time_by_state = {
-    0: 30,
-    1: 5,
-    2: 60,
-    3: 5,
+    0: 3,
+    1: 1,
+    2: 6,
+    3: 1,
 }
 
 port_by_direction = {
@@ -30,7 +30,7 @@ port_by_direction = {
 }
 
 
-@dataclass
+@dataclasses.dataclass
 class TrafficLight:
     """
     v1
@@ -65,11 +65,16 @@ class TrafficLight:
     """
 
     def __post_init__(self):
-        self.socket = socket(AF_INET, SOCK_DGRAM)
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.socket.bind(("localhost", 7000))
+
         self.counter = -1
 
-    def get_state(self):
+    def get_counter(self):
         return self.counter
+
+    def receive_message(self):
+        return self.socket.recvfrom(8192)
 
     def handle_clock_tick(self):
         self.update()
@@ -115,7 +120,7 @@ def convert_counter(counter):
     previous_state = (counter - 1) % 4
     current_state = counter % 4
     sleep_time = sleep_time_by_state[current_state]
-    status_update = f"change from {previous_state} to {current_state}, stay for {sleep_time} seconds..."
+    status_update = f"previous: {previous_state}, current: {current_state} for {sleep_time} seconds..."
 
     return sleep_time, status_update
 
@@ -124,45 +129,50 @@ if __name__ == "__main__":
     light = TrafficLight()
     event_queue = queue.Queue()
 
-    def generate_tick(interval, counter):
+    def queue_messages():
+        while True:
+            message, _ = light.receive_message()
+
+            print(
+                f"enqueue {message.decode('ascii')} with counter {light.get_counter()}"
+            )
+
+            event_queue.put((message.decode("ascii"), light.get_counter()))
+
+    def generate_tick(interval):
         time.sleep(interval)
-        event_queue.put(("tick", counter))
+        print(f"enqueue tick with counter {light.get_counter()}")
+        event_queue.put(("tick", light.get_counter()))
 
-    threading.Thread(target=generate_tick, args=(1, -1)).start()
-
-    def update(counter):
-        sleep_time, status_update = convert_counter(counter)
+    def update():
+        sleep_time, status_update = convert_counter(light.counter)
         print(status_update)
 
-        threading.Thread(target=generate_tick, args=(sleep_time, counter)).start()
+        threading.Thread(target=generate_tick, args=(sleep_time,)).start()
+
+    threading.Thread(target=queue_messages, args=()).start()
+    threading.Thread(target=generate_tick, args=(1,)).start()
 
     while True:
         event, event_counter = event_queue.get()
 
-        match event:
-            case "tick":
-                # Ignore timer event if have moved on from timer.
-                if event_counter < light.get_state():
-                    print("ignore stale tick.")
-                    continue
+        # Ignore timer event if have moved on from timer.
+        if event_counter < light.get_counter():
+            print("ignore stale event.")
+            continue
 
+        match event.lower():
+            case "tick":
                 light_counter = light.handle_clock_tick()
-                update(light_counter)
 
             case "ns":
                 light_counter = light.handle_ns_button()
 
-                if light_counter is None:
-                    print("ignore ns button")
-                    continue
-
-                update(light_counter)
-
             case "ew":
                 light_counter = light.handle_ew_button()
 
-                if light_counter is None:
-                    print("ignore ew button")
-                    continue
+        if light_counter is None:
+            print(f"ignore {event} button.")
+            continue
 
-                update(light_counter)
+        update()
