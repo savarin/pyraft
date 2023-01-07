@@ -9,24 +9,27 @@ import socket
 import time
 import threading
 
-
 colors_by_state = {
     0: ("G", "R"),
-    1: ("Y", "R"),
-    2: ("R", "G"),
-    3: ("R", "Y"),
+    1: ("G", "R"),
+    2: ("Y", "R"),
+    3: ("R", "G"),
+    4: ("R", "G"),
+    5: ("R", "Y"),
 }
 
 sleep_time_by_state = {
-    0: 30,
-    1: 5,
-    2: 60,
-    3: 5,
+    0: 15,
+    1: 15,
+    2: 5,
+    3: 15,
+    4: 45,
+    5: 5,
 }
 
 port_by_direction = {
-    "ew": 8000,
-    "ns": 9000,
+    "EW": 8000,
+    "NS": 9000,
 }
 
 
@@ -69,46 +72,69 @@ class TrafficLight:
         self.socket.bind(("localhost", 7000))
 
         self.counter = -1
+        self.button = False
 
     def get_counter(self):
         return self.counter
+
+    def get_state(self):
+        return self.counter % 6
 
     def receive_message(self):
         return self.socket.recvfrom(8192)
 
     def handle_clock_tick(self):
+        # If button pressed in first 15 seconds, then toggle on next tick.
+        if self.button:
+            if self.counter % 6 in {0, 3}:
+                self.update()
+
         self.update()
         return self.counter
 
     def handle_ns_button(self):
-        # Action only when in state 0.
-        if self.counter % 4 != 0:
-            return None
+        # Change state only when in state 1.
+        if self.counter % 6 == 1:
+            self.update()
+            return self.counter
 
-        self.update()
-        return self.counter
+        # Set button to true only when in state 0.
+        if self.counter % 6 == 0:
+            self.button = True
+            return -2
+
+        return -1
 
     def handle_ew_button(self):
-        # Action only when in state 2.
-        if self.counter % 4 != 2:
-            return None
+        # Change state only when in state 4.
+        if self.counter % 6 == 4:
+            self.update()
+            return self.counter
 
-        self.update()
-        return self.counter
+        # Set button to true only when in state 3.
+        if self.counter % 6 == 3:
+            self.button = True
+            return -2
+
+        return -1
 
     def update(self):
         self.update_counter()
         self.update_lights()
+        self.reset_button()
 
     def update_counter(self):
         self.counter += 1
 
     def update_lights(self):
-        state = self.counter % 4
+        state = self.counter % 6
         ew_color, ns_color = colors_by_state[state]
 
-        self.send_message("ew", ew_color)
-        self.send_message("ns", ns_color)
+        self.send_message("EW", ew_color)
+        self.send_message("NS", ns_color)
+
+    def reset_button(self):
+        self.button = False
 
     def send_message(self, direction, message):
         self.socket.sendto(
@@ -117,8 +143,8 @@ class TrafficLight:
 
 
 def convert_counter(counter):
-    previous_state = (counter - 1) % 4
-    current_state = counter % 4
+    previous_state = (counter - 1) % 6
+    current_state = counter % 6
     sleep_time = sleep_time_by_state[current_state]
     status_update = f"previous: {previous_state}, current: {current_state} for {sleep_time} seconds..."
 
@@ -160,18 +186,21 @@ if __name__ == "__main__":
             print("ignore stale event.")
             continue
 
-        match event.lower():
+        match event:
             case "tick":
                 light_counter = light.handle_clock_tick()
 
-            case "ns":
+            case "NS":
                 light_counter = light.handle_ns_button()
 
-            case "ew":
+            case "EW":
                 light_counter = light.handle_ew_button()
 
-        if light_counter is None:
+        if light_counter == -1:
             print(f"ignore {event} button.")
+            continue
+        elif light_counter == -2:
+            print(f"button state switched to true.")
             continue
 
         status()
