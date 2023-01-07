@@ -5,6 +5,9 @@
 # Challenge:  Make something that can be tested/debugged. 
 from dataclasses import dataclass
 from socket import socket, AF_INET, SOCK_DGRAM
+import queue
+import time
+import threading
 
 
 colors_by_state = {
@@ -12,6 +15,13 @@ colors_by_state = {
     1: ("Y", "R"),
     2: ("R", "G"),
     3: ("R", "Y"),
+}
+
+sleep_time_by_state = {
+    0: 30,
+    1: 5,
+    2: 60,
+    3: 5,
 }
 
 port_by_direction = {
@@ -22,7 +32,8 @@ port_by_direction = {
 @dataclass
 class TrafficLight:
     """
-    v1 - simply change lights according to timer.
+    v1
+    - simply change lights according to timer.
 
         state 0 - 30 seconds
             EW G
@@ -37,14 +48,22 @@ class TrafficLight:
             EW R
             NS Y
         back to state 0
+
+    v2
+    - how to deal with timer set for 30 seconds and button pressed? set up
+      incrementing counter and simply ignore ticks from a previous counter.
+
     """
     def __post_init__(self):
         self.socket = socket(AF_INET, SOCK_DGRAM)
-        self.state = 0
+        self.state = -1
 
     def handle_clock_tick(self):
+        previous_state = self.state
         self.state = (self.state + 1) % 4
         self.update_lights()
+
+        return previous_state, self.state, sleep_time_by_state[self.state]
 
     def handle_ew_button(self):
         ...
@@ -64,3 +83,18 @@ class TrafficLight:
 
 if __name__ == "__main__":
     light = TrafficLight()
+    event_queue = queue.Queue()
+
+    def generate_ticks(interval):
+        time.sleep(interval)
+        event_queue.put('tick')
+
+    threading.Thread(target=generate_ticks, args=(1,)).start()
+
+    while True:
+        event = event_queue.get()
+
+        if event == "tick":
+            previous_state, current_state, sleep_time = light.handle_clock_tick()
+            print(f"change from {previous_state} to {current_state}, stay for {sleep_time} seconds...")
+            threading.Thread(target=generate_ticks, args=(sleep_time,)).start()
