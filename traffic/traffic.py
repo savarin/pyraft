@@ -18,10 +18,10 @@ colors_by_state = {
 }
 
 sleep_time_by_state = {
-    0: 3,
-    1: 1,
-    2: 6,
-    3: 1,
+    0: 30,
+    1: 5,
+    2: 60,
+    3: 5,
 }
 
 port_by_direction = {
@@ -126,32 +126,31 @@ def convert_counter(counter):
 
 
 if __name__ == "__main__":
+    # TODO: Refactor so that event queue handles dispatch, light handles state.
     light = TrafficLight()
     event_queue = queue.Queue()
 
-    def queue_messages():
+    def enqueue(message):
+        print(f"enqueue {message}, counter {light.get_counter()}")
+        event_queue.put((message, light.get_counter()))
+
+    def listen():
         while True:
             message, _ = light.receive_message()
+            enqueue(message.decode("ascii"))
 
-            print(
-                f"enqueue {message.decode('ascii')} with counter {light.get_counter()}"
-            )
-
-            event_queue.put((message.decode("ascii"), light.get_counter()))
-
-    def generate_tick(interval):
+    def sleep(interval, message):
         time.sleep(interval)
-        print(f"enqueue tick with counter {light.get_counter()}")
-        event_queue.put(("tick", light.get_counter()))
+        enqueue(message)
 
-    def update():
+    def status():
         sleep_time, status_update = convert_counter(light.counter)
         print(status_update)
 
-        threading.Thread(target=generate_tick, args=(sleep_time,)).start()
+        threading.Thread(target=sleep, args=(sleep_time, "tick")).start()
 
-    threading.Thread(target=queue_messages, args=()).start()
-    threading.Thread(target=generate_tick, args=(1,)).start()
+    threading.Thread(target=listen, args=()).start()
+    threading.Thread(target=sleep, args=(1, "tick")).start()
 
     while True:
         event, event_counter = event_queue.get()
@@ -175,4 +174,4 @@ if __name__ == "__main__":
             print(f"ignore {event} button.")
             continue
 
-        update()
+        status()
