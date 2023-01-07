@@ -19,26 +19,29 @@ from socket import socket, AF_INET, SOCK_DGRAM
 import sys
 
 codes = {
-    'G': '\x1b[32m',
-    'R': '\x1b[31m',
-    'Y': '\x1b[33m',
+    "G": "\x1b[32m",
+    "R": "\x1b[31m",
+    "Y": "\x1b[33m",
 }
+
 
 def main(label, port):
     sock = socket(AF_INET, SOCK_DGRAM)
-    sock.bind(('localhost', port))
-    light = 'R'
+    sock.bind(("localhost", port))
+    light = "R"
     while True:
-        sys.stdout.write(f'\r{codes[light]}{label}: {light}\x1b[0m')
+        sys.stdout.write(f"\r{codes[light]}{label}: {light}\x1b[0m")
         sys.stdout.flush()
         msg, addr = sock.recvfrom(8192)
-        msg = msg.decode('ascii')
-        if msg in {'G', 'Y', 'R'}:
+        msg = msg.decode("ascii")
+        if msg in {"G", "Y", "R"}:
             light = msg
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     import os
+
     if len(sys.argv) != 3:
-        raise SystemExit(f'Usage: {sys.argv[0]} label port')
-    os.system('')  # Windows hack. Don't ask.
+        raise SystemExit(f"Usage: {sys.argv[0]} label port")
+    os.system("")  # Windows hack. Don't ask.
     main(sys.argv[1], int(sys.argv[2]))
