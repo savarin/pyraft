@@ -36,58 +36,39 @@ port_by_direction = {
 @dataclasses.dataclass
 class TrafficLight:
     """
-    v1
-    - simply change lights according to timer.
+    state 0 - 15 seconds, NS button only changes flag
+        EW G
+        NS R
+    state 1 - 15 seconds, NS button switches state
+        EW G
+        NS R
+    state 2 - 5 seconds
+        EW Y
+        NS R
+    state 3 - 15 seconds, EW button only changes flag
+        EW R
+        NS G
+    state 4 - 45 seconds, EW button switches state
+        EW R
+        NS G
+    state 5 - 5 seconds
+        EW R
+        NS Y
 
-        state 0 - 30 seconds
-            EW G
-            NS R
-        state 1 - 5 seconds
-            EW Y
-            NS R
-        state 2 - 60 seconds
-            EW R
-            NS G
-        state 3 - 5 seconds
-            EW R
-            NS Y
+    v1 - simply change lights according to timer, with 4 states as the button is
+    not taken into consideration.
 
-    v2
-    - how to deal with timer set for 30 seconds and button pressed? set up
-      incrementing counter and simply ignore ticks from a previous counter.
-    - ignore 15 second check
+    v2 - how to deal with timer set for 30 seconds and button pressed? set up
+    incrementing counter and simply ignore ticks from a previous counter.
 
-    v3
-    - implement 15 second check
+    v3 - implement 15 second check by expanding to 6 states by breaking up the
+    red-green combinations into two based on the effect of the button.
 
-        state 0 - 15 seconds, NS button only changes flag
-            EW G
-            NS R
-        state 1 - 15 seconds, NS button switches state
-            EW G
-            NS R
-        state 2 - 5 seconds
-            EW Y
-            NS R
-        state 3 - 15 seconds, EW button only changes flag
-            EW R
-            NS G
-        state 4 - 45 seconds, EW button switches state
-            EW R
-            NS G
-        state 4 - 5 seconds
-            EW R
-            NS Y
-
-    v4
-    - how to enable better testing? carve out socket-related functionality into
-      separate class. handle based on output.
+    v4 - how to enable better testing? carve out socket-related functionality
+    into separate class. handle based on output.
     """
 
     def __post_init__(self):
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.socket.bind(("localhost", 7000))
-
         self.counter = -1
         self.button = False
 
@@ -97,15 +78,13 @@ class TrafficLight:
     def get_state(self):
         return self.counter % 6
 
-    def receive_message(self):
-        return self.socket.recvfrom(8192)
-
     def handle_clock_tick(self):
-        # If button pressed in first 15 seconds, then toggle on next tick.
+        # If button pressed in first 15 seconds, then change state so that the
+        # second part of red-green is skipped to yellow-green.
         if self.button and self.get_state() in {0, 3}:
-            self.update()
+            self.increment_counter()
 
-        self.update()
+        self.increment_counter()
         return self.counter
 
     def handle_north_south_button(self):
@@ -116,7 +95,7 @@ class TrafficLight:
 
         # Change state only when in state 1.
         elif self.get_state() == 1:
-            self.update()
+            self.increment_counter()
             return self.counter
 
         return -1
@@ -129,32 +108,36 @@ class TrafficLight:
 
         # Change state only when in state 4.
         elif self.get_state() == 4:
-            self.update()
+            self.increment_counter()
             return self.counter
 
         return -1
 
-    def update(self):
-        self.update_counter()
-        self.update_lights()
-        self.reset_button()
-
-    def update_counter(self):
+    def increment_counter(self):
         self.counter += 1
-
-    def update_lights(self):
-        east_west_color, north_south_color = colors_by_state[self.get_state()]
-
-        self.send_message("EW", east_west_color)
-        self.send_message("NS", north_south_color)
-
-    def reset_button(self):
         self.button = False
 
+
+@dataclasses.dataclass
+class Server:
+    def __post_init__(self):
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.socket.bind(("localhost", 7000))
+
+        self.queue = queue.Queue()
+
     def send_message(self, direction, message):
-        self.socket.sendto(
-            message.encode("ascii"), ("localhost", port_by_direction[direction])
-        )
+        address = ("localhost", port_by_direction[direction])
+        self.socket.sendto(message.encode("ascii"), address)
+
+    def receive_message(self):
+        return self.socket.recvfrom(8192)
+
+    def put_message(self, message, counter):
+        self.queue.put((message, counter))
+
+    def get_message(self):
+        return self.queue.get()
 
 
 def convert_state(state):
@@ -164,26 +147,32 @@ def convert_state(state):
     return sleep_time, status_update
 
 
-if __name__ == "__main__":
-    # TODO: Refactor so that queue handles dispatch, light handles state.
+def run():
     traffic_light = TrafficLight()
-    event_queue = queue.Queue()
-
-    def enqueue(message):
-        print(f"enqueue {message} with counter {traffic_light.get_counter()}")
-        event_queue.put((message, traffic_light.get_counter()))
+    server = Server()
 
     def listen():
         while True:
-            message, _ = traffic_light.receive_message()
-            enqueue(message.decode("ascii"))
+            message, _ = server.receive_message()
+            counter = traffic_light.get_counter()
+
+            print(f"enqueue {message.decode('ascii')} with counter {counter}")
+            server.put_message(message.decode("ascii"), counter)
 
     def sleep(interval):
         time.sleep(interval)
-        enqueue("tick")
+        counter = traffic_light.get_counter()
 
-    def status():
-        sleep_time, status_update = convert_state(traffic_light.get_state())
+        print(f"enqueue tick with counter {traffic_light.get_counter()}")
+        server.put_message("tick", traffic_light.get_counter())
+
+    def update():
+        state = traffic_light.get_state()
+        east_west_color, north_south_color = colors_by_state[state]
+        sleep_time, status_update = convert_state(state)
+
+        server.send_message("EW", east_west_color)
+        server.send_message("NS", north_south_color)
         print(status_update)
 
         threading.Thread(target=sleep, args=(sleep_time,)).start()
@@ -192,7 +181,7 @@ if __name__ == "__main__":
     threading.Thread(target=sleep, args=(1,)).start()
 
     while True:
-        event, event_counter = event_queue.get()
+        event, event_counter = server.get_message()
 
         # Ignore timer event if have moved on from timer.
         if event_counter < traffic_light.get_counter():
@@ -214,7 +203,11 @@ if __name__ == "__main__":
             continue
 
         elif light_counter == -2:
-            print(f"button state switched to true.")
+            print(f"button state switched to true only.")
             continue
 
-        status()
+        update()
+
+
+if __name__ == "__main__":
+    run()
