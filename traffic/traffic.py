@@ -3,8 +3,9 @@
 # Implement traffic light control software.
 #
 # Challenge:  Make something that can be tested/debugged.
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Optional
 import dataclasses
+import enum
 import queue
 import socket
 import time
@@ -29,9 +30,17 @@ sleep_time_by_state: Dict[int, int] = {
 }
 
 port_by_direction: Dict[str, int] = {
+    "localhost": 7000,
     "EW": 8000,
     "NS": 9000,
 }
+
+
+class Response(enum.Enum):
+    UPDATE_STATE = "UPDATE_STATE"
+    UPDATE_BUTTON = "UPDATE_BUTTON"
+    IGNORE_BUTTON = "IGNORE_BUTTON"
+    IGNORE_EVENT = "IGNORE_EVENT"
 
 
 @dataclasses.dataclass
@@ -69,76 +78,100 @@ class TrafficLight:
     functionality into separate class. handle based on output.
 
     v5 - write tests for queue functionality by patching network and simulating
-    enqueued messages.
+    enqueued messages. set up enums for states, ports and actions. combine
+    colors and sleep time dictionaries.
     """
 
     def __post_init__(self) -> None:
-        self.counter: int = -1
-        self.button: bool = False
+        self._counter: int = -1
+        self._button: bool = False
 
     def get_counter(self) -> int:
-        return self.counter
+        return self._counter
 
     def get_button(self) -> bool:
-        return self.button
+        return self._button
 
     def get_state(self) -> int:
-        return self.counter % 6
+        return self._counter % 6
 
-    def handle_clock_tick(self) -> int:
+    def increment_counter(self) -> None:
+        self._counter += 1
+
+    def toggle_button(self) -> None:
+        self._button = True
+
+    def reset_button(self) -> None:
+        self._button = False
+
+    def handle_clock_tick(self) -> Tuple[Response, Optional[int]]:
         # If button pressed in first 15 seconds, then change state so that the
         # second part of red-green is skipped to yellow-green.
-        if self.button and self.get_state() in {0, 3}:
+        if self.get_button() and self.get_state() in {0, 3}:
             self.increment_counter()
 
         self.increment_counter()
         self.reset_button()
-        return self.counter
+        return Response.UPDATE_STATE, self.get_state()
 
-    def handle_north_south_button(self) -> int:
+    def handle_north_south_button(self) -> Tuple[Response, Optional[int]]:
         # Set button to true only when in state 0.
         if self.get_state() == 0:
-            self.button = True
-            return -2
+            self.toggle_button()
+            return Response.UPDATE_BUTTON, None
 
         # Change state only when in state 1.
         elif self.get_state() == 1:
             self.increment_counter()
             self.reset_button()
-            return self.counter
+            return Response.UPDATE_STATE, self.get_state()
 
-        return -1
+        return Response.IGNORE_BUTTON, None
 
-    def handle_east_west_button(self) -> int:
+    def handle_east_west_button(self) -> Tuple[Response, Optional[int]]:
         # Set button to true only when in state 3.
         if self.get_state() == 3:
-            self.button = True
-            return -2
+            self.toggle_button()
+            return Response.UPDATE_BUTTON, None
 
         # Change state only when in state 4.
         elif self.get_state() == 4:
             self.increment_counter()
             self.reset_button()
-            return self.counter
+            return Response.UPDATE_STATE, self.get_state()
 
-        return -1
+        return Response.IGNORE_BUTTON, None
 
-    def increment_counter(self) -> None:
-        self.counter += 1
+    def handle_event(
+        self, event: str, event_counter: int
+    ) -> Tuple[Response, Optional[int]]:
+        # Ignore timer event if have moved on from timer.
+        if event_counter < self.get_counter():
+            return Response.IGNORE_EVENT, None
 
-    def reset_button(self) -> None:
-        self.button = False
+        match event:
+            case "tick":
+                return self.handle_clock_tick()
+
+            case "NS":
+                return self.handle_north_south_button()
+
+            case "EW":
+                return self.handle_east_west_button()
+
+            case _:
+                raise Exception("Exhaustive switch error.")
 
 
 @dataclasses.dataclass
 class Server:
     def __post_init__(self) -> None:
         self.socket: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.socket.bind(("localhost", 7000))
+        self.socket.bind(("localhost", port_by_direction["localhost"]))
 
         self.queue: queue.Queue = queue.Queue()
 
-    def send_message(self, direction: str, message: str) -> None:
+    def send_message(self, message: str, direction: str) -> None:
         address = ("localhost", port_by_direction[direction])
         self.socket.sendto(message.encode("ascii"), address)
 
@@ -172,50 +205,43 @@ def run() -> None:
         print(f"enqueue tick with counter {counter}")
         server.put_message("tick", counter)
 
-    def update() -> None:
-        state = traffic_light.get_state()
-        east_west_color, north_south_color = colors_by_state[state]
-        sleep_time = sleep_time_by_state[state]
-
-        server.send_message("EW", east_west_color)
-        server.send_message("NS", north_south_color)
-
-        print(f"switch to {str(state)} for {str(sleep_time)} seconds...")
-        threading.Thread(target=sleep, args=(sleep_time,)).start()
-
     def start() -> None:
         threading.Thread(target=listen, args=()).start()
         threading.Thread(target=sleep, args=(1,)).start()
 
+    def update(state) -> int:
+        east_west_color, north_south_color = colors_by_state[state]
+        sleep_time = sleep_time_by_state[state]
+
+        server.send_message(east_west_color, "EW")
+        server.send_message(north_south_color, "NS")
+
+        threading.Thread(target=sleep, args=(sleep_time,)).start()
+        return sleep_time
+
     start()
 
+    # TODO: Create test with server and traffic light.
     while True:
         event, event_counter = server.get_message()
+        response, state = traffic_light.handle_event(event, event_counter)
 
-        # Ignore timer event if have moved on from timer.
-        if event_counter < traffic_light.get_counter():
-            print("ignore stale event.")
-            continue
+        match response:
+            case Response.IGNORE_EVENT:
+                print("ignore stale event.")
 
-        match event:
-            case "tick":
-                light_counter = traffic_light.handle_clock_tick()
+            case Response.IGNORE_BUTTON:
+                print(f"ignore {event} button.")
 
-            case "NS":
-                light_counter = traffic_light.handle_north_south_button()
+            case Response.UPDATE_BUTTON:
+                print("button state switched to true.")
 
-            case "EW":
-                light_counter = traffic_light.handle_east_west_button()
+            case Response.UPDATE_STATE:
+                sleep_time = update(state)
+                print(f"switch to {str(state)} for {str(sleep_time)} seconds...")
 
-        if light_counter == -1:
-            print(f"ignore {event} button.")
-            continue
-
-        elif light_counter == -2:
-            print(f"button state switched to true only.")
-            continue
-
-        update()
+            case _:
+                raise Exception("Exhaustive switch error.")
 
 
 if __name__ == "__main__":

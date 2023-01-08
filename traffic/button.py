@@ -27,7 +27,7 @@ def main(button_id, host, port):
     with sock:
         while True:
             try:
-                line = input(f"Button {button_id}: [Press Return]")
+                input(f"Button {button_id}: [Press Return]")
             except EOFError:
                 return
             try:
