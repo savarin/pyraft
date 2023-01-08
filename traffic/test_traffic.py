@@ -1,7 +1,7 @@
 import traffic
 
 
-def test_clock_tick():
+def test_clock_tick() -> None:
     traffic_light = traffic.TrafficLight()
 
     for i in range(6):
@@ -18,7 +18,7 @@ def test_clock_tick():
     assert not traffic_light.get_button()
 
 
-def test_north_south_button():
+def test_north_south_button() -> None:
     traffic_light = traffic.TrafficLight()
     traffic_light.handle_clock_tick()
 
@@ -49,7 +49,7 @@ def test_north_south_button():
     assert not traffic_light.get_button()
 
 
-def test_east_west_button():
+def test_east_west_button() -> None:
     traffic_light = traffic.TrafficLight()
     traffic_light.handle_clock_tick()
 
