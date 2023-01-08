@@ -64,8 +64,11 @@ class TrafficLight:
     v3 - implement 15 second check by expanding to 6 states by breaking up the
     red-green combinations into two based on the effect of the button.
 
-    v4 - how to enable better testing? carve out socket-related functionality
-    into separate class. handle based on output.
+    v4 (current) - how to enable better testing? carve out socket-related
+    functionality into separate class. handle based on output.
+
+    v5 - write tests for queue functionality by patching network and simulating
+    enqueued messages.
     """
 
     def __post_init__(self):
@@ -74,6 +77,9 @@ class TrafficLight:
 
     def get_counter(self):
         return self.counter
+
+    def get_button(self):
+        return self.button
 
     def get_state(self):
         return self.counter % 6
@@ -142,7 +148,7 @@ class Server:
 
 def convert_state(state):
     sleep_time = sleep_time_by_state[state]
-    status_update = f"switch to {str(state)} for {sleep_time} seconds..."
+    status_update = f"switch to {str(state)} for {str(sleep_time)} seconds..."
 
     return sleep_time, status_update
 
@@ -177,8 +183,11 @@ def run():
 
         threading.Thread(target=sleep, args=(sleep_time,)).start()
 
-    threading.Thread(target=listen, args=()).start()
-    threading.Thread(target=sleep, args=(1,)).start()
+    def start():
+        threading.Thread(target=listen, args=()).start()
+        threading.Thread(target=sleep, args=(1,)).start()
+
+    start()
 
     while True:
         event, event_counter = server.get_message()
