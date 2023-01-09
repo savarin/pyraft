@@ -21,34 +21,9 @@ class KVApplication:
             del self.data[key]
 
 
-def initialize_socket():
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
-
-    # TODO: Create config.
-    sock.bind(("localhost", 8000))
-    sock.listen()
-    return sock
-
-
-class KVServer:
+class KVHandler:
     def __init__(self):
         self.app = KVApplication()
-        self.socket = initialize_socket()
-        self.queue = queue.Queue()
-        self.clients = {}
-
-    def put(self, identifier, message):
-        self.queue.put((identifier, message))
-
-    def get(self):
-        return self.queue.get()
-
-    def receive(self, client):
-        return client.recv(32).decode("ascii")
-
-    def send(self, client, message):
-        client.sendall(message.encode("ascii"))
 
     def handle(self, request):
         command, *arguments = request.split(" ")
@@ -67,42 +42,72 @@ class KVServer:
             self.app.delete(arguments[0])
             return None
 
+
+def initialize_socket(address):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
+
+    # TODO: Create config.
+    sock.bind(address)
+    sock.listen()
+    return sock
+
+
+class KVServer:
+    def __init__(self):
+        self.socket = initialize_socket(("localhost", 8000))
+        self.queue = queue.Queue()
+        self.clients = {}
+
+    def put(self, message):
+        self.queue.put(message)
+
+    def get(self):
+        return self.queue.get()
+
+    def receive(self, identifier):
+        return self.clients[identifier].recv(32).decode("ascii")
+
+    def send(self, identifier, message):
+        self.clients[identifier].sendall(message.encode("ascii"))
+
     def register(self, client):
         identifier = len(self.clients)
         self.clients[identifier] = client
 
         return identifier
 
-    def produce(self):
+    def direct(self, identifier):
+        try:
+            while True:
+                # TODO: Use bencode for request and response.
+                request = self.receive(identifier)
+                self.put((identifier, request))
+
+        except IOError:
+            self.clients[identifier].close()
+
+    def listen(self):
         while True:
             client, address = self.socket.accept()
-            print("connection from:", address)
-
             identifier = self.register(client)
 
-            try:
-                while True:
-                    # TODO: Use bencode for request and response.
-                    request = self.receive(client)
-                    self.put(identifier, request)
-
-            except IOError:
-                client.close()
-
-    def consume(self):
-        identifier, request = self.get()
-        response = self.handle(request)
-        print(request, response or "None")
-
-        self.send(self.clients[identifier], response or "ok")
+            print("connection from:", address)
+            threading.Thread(target=self.direct, args=(identifier,)).start()
 
 
 def run():
+    handler = KVHandler()
     server = KVServer()
-    threading.Thread(target=server.produce, args=()).start()
+
+    threading.Thread(target=server.listen, args=()).start()
 
     while True:
-        server.consume()
+        identifier, request = server.get()
+        response = handler.handle(request)
+        print(request, response or "None")
+
+        server.send(identifier, response or "ok")
 
 
 if __name__ == "__main__":
