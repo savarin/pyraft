@@ -35,9 +35,10 @@ class KVServer:
         self.app = KVApplication()
         self.socket = initialize_socket()
         self.queue = queue.Queue()
+        self.clients = {}
 
-    def put(self, message):
-        self.queue.put(message)
+    def put(self, identifier, message):
+        self.queue.put((identifier, message))
 
     def get(self):
         return self.queue.get()
@@ -65,26 +66,38 @@ class KVServer:
             self.app.delete(arguments[0])
             return None
 
-    def run(self):
+    def register(self, client):
+        identifier = len(self.clients)
+        self.clients[identifier] = client
+
+        return identifier
+
+    def produce(self):
         while True:
             client, address = self.socket.accept()
             print("connection from:", address)
 
+            identifier = self.register(client)
+
             try:
                 while True:
-                    # TODO: Log requests and response.
-                    request = self.receive(client)
-
                     # TODO: Use bencode for request and response.
-                    response = self.handle(request)
-                    print(request, response)
+                    request = self.receive(client)
+                    self.put(identifier, request)
 
-                    self.send(client, response or "ok")
+                    self.consume()
 
             except IOError:
                 client.close()
 
+    def consume(self):
+        identifier, request = self.get()
+        response = self.handle(request)
+        print(request, response or "None")
+
+        self.send(self.clients[identifier], response or "ok")
+
 
 if __name__ == "__main__":
     server = KVServer()
-    server.run()
+    server.produce()
