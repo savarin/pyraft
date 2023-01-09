@@ -1,4 +1,5 @@
-from socket import socket, AF_INET, SO_REUSEADDR, SOCK_STREAM, SOL_SOCKET
+import socket
+import queue
 
 
 class KVApplication:
@@ -20,8 +21,8 @@ class KVApplication:
 
 
 def initialize_socket():
-    sock = socket(AF_INET, SOCK_STREAM)
-    sock.setsockopt(SOL_SOCKET, SO_REUSEADDR, True)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
 
     # TODO: Create config.
     sock.bind(("localhost", 8000))
@@ -33,6 +34,19 @@ class KVServer:
     def __init__(self):
         self.app = KVApplication()
         self.socket = initialize_socket()
+        self.queue = queue.Queue()
+
+    def put(self, message):
+        self.queue.put(message)
+
+    def get(self):
+        return self.queue.get()
+
+    def receive(self, client):
+        return client.recv(32).decode("ascii")
+
+    def send(self, client, message):
+        client.sendall(message.encode("ascii"))
 
     def handle(self, request):
         command, *arguments = request.split(" ")
@@ -59,13 +73,13 @@ class KVServer:
             try:
                 while True:
                     # TODO: Log requests and response.
-                    request = client.recv(32).decode("ascii")
+                    request = self.receive(client)
 
                     # TODO: Use bencode for request and response.
                     response = self.handle(request)
                     print(request, response)
 
-                    client.sendall((response or "ok").encode("ascii"))
+                    self.send(client, response or "ok")
 
             except IOError:
                 client.close()
