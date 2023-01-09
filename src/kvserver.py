@@ -1,5 +1,6 @@
 import socket
 import queue
+import threading
 
 
 class KVApplication:
@@ -85,8 +86,6 @@ class KVServer:
                     request = self.receive(client)
                     self.put(identifier, request)
 
-                    self.consume()
-
             except IOError:
                 client.close()
 
@@ -98,6 +97,13 @@ class KVServer:
         self.send(self.clients[identifier], response or "ok")
 
 
-if __name__ == "__main__":
+def run():
     server = KVServer()
-    server.produce()
+    threading.Thread(target=server.produce, args=()).start()
+
+    while True:
+        server.consume()
+
+
+if __name__ == "__main__":
+    run()
