@@ -19,16 +19,20 @@ class KVApplication:
             del self.data[key]
 
 
+def initialize_socket():
+    sock = socket(AF_INET, SOCK_STREAM)
+    sock.setsockopt(SOL_SOCKET, SO_REUSEADDR, True)
+
+    # TODO: Create config.
+    sock.bind(("localhost", 8000))
+    sock.listen()
+    return sock
+
+
 class KVServer:
     def __init__(self):
         self.app = KVApplication()
-
-        # TODO: Carve out in separate method.
-        self.sock = socket(AF_INET, SOCK_STREAM)
-        self.sock.setsockopt(SOL_SOCKET, SO_REUSEADDR, True)
-        # TODO: Create config.
-        self.sock.bind(("localhost", 8000))
-        self.sock.listen()
+        self.socket = initialize_socket()
 
     def handle(self, request):
         command, *arguments = request.split(" ")
@@ -49,7 +53,7 @@ class KVServer:
 
     def run(self):
         while True:
-            client, address = self.sock.accept()
+            client, address = self.socket.accept()
             print("connection from:", address)
 
             try:
