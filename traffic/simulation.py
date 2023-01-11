@@ -55,86 +55,93 @@ def initial_state():
     }
 
 
-def next_state(state, event):
+def handle_event(state, event):
     if event == EventEnum.CLOCK:
         state["clock"] += 1
-
-        if (
-            state["east_west_color"] == ColorEnum.RED
-            and state["north_south_color"] == ColorEnum.RED
-        ):
-            state = initial_state()
-            state.update({"east_west_color": ColorEnum.GREEN})
-
-        elif (
-            state["east_west_color"] == ColorEnum.GREEN
-            and state["north_south_color"] == ColorEnum.RED
-        ):
-            if (state["clock"] == 15 and state["north_south_button"]) or state[
-                "clock"
-            ] == 30:
-                state = initial_state()
-                state.update({"east_west_color": ColorEnum.YELLOW})
-
-        elif (
-            state["east_west_color"] == ColorEnum.YELLOW
-            and state["north_south_color"] == ColorEnum.RED
-        ):
-            if state["clock"] == 5:
-                state = initial_state()
-                state.update(
-                    {
-                        "east_west_color": ColorEnum.RED,
-                        "north_south_color": ColorEnum.GREEN,
-                    }
-                )
-
-        elif (
-            state["east_west_color"] == ColorEnum.RED
-            and state["north_south_color"] == ColorEnum.GREEN
-        ):
-            if (state["clock"] == 15 and state["east_west_button"]) or state[
-                "clock"
-            ] == 60:
-                state = initial_state()
-                state.update({"north_south_color": ColorEnum.YELLOW})
-
-        elif (
-            state["east_west_color"] == ColorEnum.RED
-            and state["north_south_color"] == ColorEnum.YELLOW
-        ):
-            if state["clock"] == 5:
-                state = initial_state()
-                state.update(
-                    {
-                        "east_west_color": ColorEnum.GREEN,
-                        "north_south_color": ColorEnum.RED,
-                    }
-                )
 
     elif event == EventEnum.EW_BUTTON:
         state["east_west_button"] = True
 
-        if (
-            state["east_west_color"] == ColorEnum.RED
-            and state["north_south_color"] == ColorEnum.GREEN
-        ):
-            if state["clock"] >= 15:
-                state = initial_state()
-                state.update({"north_south_color": ColorEnum.YELLOW})
-
     elif event == EventEnum.NS_BUTTON:
         state["north_south_button"] = True
 
-        if (
-            state["east_west_color"] == ColorEnum.GREEN
-            and state["north_south_color"] == ColorEnum.RED
-        ):
-            if state["clock"] >= 15:
-                state = initial_state()
-                state.update({"east_west_color": ColorEnum.YELLOW})
+    return state
+
+
+def apply_transition(state):
+    if (
+        state["east_west_color"] == ColorEnum.RED
+        and state["north_south_color"] == ColorEnum.RED
+    ):
+        state = initial_state()
+        state.update({"east_west_color": ColorEnum.GREEN})
+
+    elif (
+        state["east_west_color"] == ColorEnum.GREEN
+        and state["north_south_color"] == ColorEnum.RED
+    ):
+        if (state["clock"] == 15 and state["north_south_button"]) or state[
+            "clock"
+        ] == 30:
+            state = initial_state()
+            state.update({"east_west_color": ColorEnum.YELLOW})
+
+    elif (
+        state["east_west_color"] == ColorEnum.YELLOW
+        and state["north_south_color"] == ColorEnum.RED
+    ):
+        if state["clock"] == 5:
+            state = initial_state()
+            state.update(
+                {
+                    "east_west_color": ColorEnum.RED,
+                    "north_south_color": ColorEnum.GREEN,
+                }
+            )
+
+    elif (
+        state["east_west_color"] == ColorEnum.RED
+        and state["north_south_color"] == ColorEnum.GREEN
+    ):
+        if (state["clock"] == 15 and state["east_west_button"]) or state["clock"] == 60:
+            state = initial_state()
+            state.update({"north_south_color": ColorEnum.YELLOW})
+
+    elif (
+        state["east_west_color"] == ColorEnum.RED
+        and state["north_south_color"] == ColorEnum.YELLOW
+    ):
+        if state["clock"] == 5:
+            state = initial_state()
+            state.update(
+                {
+                    "east_west_color": ColorEnum.GREEN,
+                    "north_south_color": ColorEnum.RED,
+                }
+            )
+
+    elif (
+        state["east_west_color"] == ColorEnum.RED
+        and state["north_south_color"] == ColorEnum.GREEN
+    ):
+        if state["clock"] >= 15:
+            state = initial_state()
+            state.update({"north_south_color": ColorEnum.YELLOW})
+
+    elif (
+        state["east_west_color"] == ColorEnum.GREEN
+        and state["north_south_color"] == ColorEnum.RED
+    ):
+        if state["clock"] >= 15:
+            state = initial_state()
+            state.update({"east_west_color": ColorEnum.YELLOW})
 
     return state
+
+
+def next_state(state, event):
+    state = handle_event(state, event)
+    return apply_transition(state)
 
 
 current_color_pair_by_previous_color_pair = {
