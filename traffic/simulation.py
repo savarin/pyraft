@@ -246,6 +246,16 @@ def assert_valid_sequential_states(previous_state, current_state):
     assert is_clock_same or is_clock_transition or is_clock_reset
 
 
+def convert(state):
+    result = state.copy()
+
+    for k, v in result.items():
+        if isinstance(v, enum.Enum):
+            result[k] = v.value
+
+    return result
+
+
 if __name__ == "__main__":
     iterations = int(sys.argv[1])
 
