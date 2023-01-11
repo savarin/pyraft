@@ -28,19 +28,19 @@ class KVHandler:
     def handle(self, request):
         command, *arguments = request.split(" ")
 
-        if command == "set":
-            assert len(arguments) == 2
+        # TODO: Consider using return codes.
+        if command == "set" and len(arguments) == 2:
             self.app.set(arguments[0], arguments[1])
-            return None
+            return True, None
 
-        elif command == "get":
-            assert len(arguments) == 1
-            return self.app.get(arguments[0])
+        elif command == "get" and len(arguments) == 1:
+            return True, self.app.get(arguments[0])
 
-        elif command == "delete":
-            assert len(arguments) == 1
+        elif command == "delete" and len(arguments) == 1:
             self.app.delete(arguments[0])
-            return None
+            return True, None
+
+        return False, None
 
 
 def initialize_socket(address):
@@ -104,10 +104,15 @@ def run():
 
     while True:
         identifier, request = server.get()
-        response = handler.handle(request)
-        print(request, response or "None")
+        result, value = handler.handle(request)
 
-        server.send(identifier, response or "ok")
+        if result:
+            response = value or "ok"
+        else:
+            response = "invalid request"
+
+        print(request, response)
+        server.send(identifier, response)
 
 
 if __name__ == "__main__":
