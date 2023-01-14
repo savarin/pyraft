@@ -8,11 +8,8 @@ class LogEntry:
     item: str
 
 
-def append_entries(
-    log: List[LogEntry],
-    previous_index: int,
-    previous_term: int,
-    entries: List[LogEntry],
+def append_entry(
+    log: List[LogEntry], previous_index: int, previous_term: int, entry: LogEntry
 ):
     """
     Choose index starting from 0.
@@ -25,36 +22,38 @@ def append_entries(
      ^ ^ ^   ^ ^
      0 1 2   3 4
     """
-    entries_index = 0
+    # Replace entry if previous_index refers to existing entry.
+    if previous_index < len(log):
+        # Modify if value is different.
+        if log[previous_index].item != entry.item:
+            log[previous_index] = entry
+
+        return True
+
+    # Otherwise append to log.
+    elif previous_index == len(log):
+        log.append(entry)
+        return True
+
+    return False
+
+
+def append_entries(
+    log: List[LogEntry],
+    previous_index: int,
+    previous_term: int,
+    entries: List[LogEntry],
+):
+    # Check term number of previous entry matches current term.
+    if len(log) > 0 and log[previous_index - 1].term != previous_term:
+        return False
 
     # Check index rewrite does not create gaps. If it does, return False.
     if previous_index > len(log):
         return False
 
-    while True:
-        # Check term number of previous entry matches current term.
-        if len(log) > 0 and log[previous_index - 1].term != previous_term:
+    for i, entry in enumerate(entries):
+        if not append_entry(log, previous_index + i, previous_term, entry):
             return False
-
-        # When no more entries to add, break out of loop.
-        if len(entries) == entries_index:
-            break
-
-        entry = entries[entries_index]
-
-        # Replace entry if prev_index refers to location with existing entry.
-        if previous_index + entries_index < len(log):
-            # Check value is different.
-            if log[previous_index].item != entry.item:
-                log[previous_index] = entry
-
-        # Otherwise append to log.
-        elif previous_index + entries_index == len(log):
-            log.append(entry)
-
-        else:
-            raise Exception("Invalid index error.")
-
-        entries_index += 1
 
     return True
