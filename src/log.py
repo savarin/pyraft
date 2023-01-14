@@ -9,7 +9,10 @@ class LogEntry:
 
 
 def append_entries(
-    log: List[LogEntry], prev_index: int, prev_term: int, entries: List[LogEntry]
+    log: List[LogEntry],
+    previous_index: int,
+    previous_term: int,
+    entries: List[LogEntry],
 ):
     """
     Choose index starting from 0.
@@ -22,27 +25,36 @@ def append_entries(
      ^ ^ ^   ^ ^
      0 1 2   3 4
     """
+    entries_index = 0
+
     # Check index rewrite does not create gaps. If it does, return False.
-    if prev_index > len(log):
+    if previous_index > len(log):
         return False
 
     while True:
-        if len(entries) == 0:
+        # When no more entries to add, break out of loop.
+        if len(entries) == entries_index:
             break
 
-        entry = entries.pop(0)
+        entry = entries[entries_index]
+
+        # Check term number of previous entry matches current term.
+        if len(log) > 0 and log[previous_index - 1].term != previous_term:
+            return False
 
         # Replace entry if prev_index refers to location with existing entry.
-        if prev_index < len(log):
-            log[prev_index] = entry
+        if previous_index < len(log):
+            # Check value is different.
+            if log[previous_index].item != entry.item:
+                log[previous_index] = entry
 
         # Otherwise append to log.
-        elif prev_index == len(log):
+        elif previous_index == len(log):
             log.append(entry)
 
         else:
             raise Exception("Invalid index error.")
 
-        prev_index += 1
+        entries_index += 1
 
     return True
