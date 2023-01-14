@@ -32,24 +32,24 @@ def append_entries(
         return False
 
     while True:
+        # Check term number of previous entry matches current term.
+        if len(log) > 0 and log[previous_index - 1].term != previous_term:
+            return False
+
         # When no more entries to add, break out of loop.
         if len(entries) == entries_index:
             break
 
         entry = entries[entries_index]
 
-        # Check term number of previous entry matches current term.
-        if len(log) > 0 and log[previous_index - 1].term != previous_term:
-            return False
-
         # Replace entry if prev_index refers to location with existing entry.
-        if previous_index < len(log):
+        if previous_index + entries_index < len(log):
             # Check value is different.
             if log[previous_index].item != entry.item:
                 log[previous_index] = entry
 
         # Otherwise append to log.
-        elif previous_index == len(log):
+        elif previous_index + entries_index == len(log):
             log.append(entry)
 
         else:
