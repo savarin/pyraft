@@ -22,15 +22,7 @@ def append_entry(
      ^ ^ ^   ^ ^
      0 1 2   3 4
     """
-    # Check index rewrite does not create gaps. If it does, return False.
-    if previous_index >= len(log):
-        return False
-
-    elif 0 <= previous_index < len(log):
-        # Check term number of previous entry matches previous_term.
-        if log[previous_index].term != previous_term:
-            return False
-
+    if 0 <= previous_index < len(log):
         if previous_index < len(log) - 1:
             log[previous_index + 1] = entry
             return True
