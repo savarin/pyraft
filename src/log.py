@@ -14,13 +14,13 @@ def append_entry(
     """
     Choose index starting from 0.
 
-    Suppose have 3 elements. Either append starting at prev_index 3 or modify at
-    1, 2 or 3, returning True. Can append from index 3, replaces index 0 or 1 or
-    2, but return False if try to specify prev_index 4. or more
+    Suppose have 3 elements. Either append starting at previous_index 2 or
+    modify at 0 or 1, returning True. Returns False if try to previous_index
+    3 or more.
 
-    [a b c]  d e
-     ^ ^ ^   ^ ^
-     0 1 2   3 4
+    [a b c]  d e 4
+     ^ ^ ^   ^ ^ ^
+     0 1 2   3 4 5
     """
     if 0 <= previous_index < len(log):
         if previous_index < len(log) - 1:
@@ -28,15 +28,6 @@ def append_entry(
             return True
 
         elif previous_index == len(log) - 1:
-            log.append(entry)
-            return True
-
-    elif previous_index == -1:
-        if len(log) > 0:
-            log[previous_index + 1] = entry
-            return True
-
-        elif len(log) == 0:
             log.append(entry)
             return True
 
