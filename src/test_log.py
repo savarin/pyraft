@@ -55,29 +55,25 @@ def test_append_entry(simple_log):
     assert current_log[1].item == "x"
     assert current_log[2].item == "c"
 
+
+def test_append_entries_simple(simple_log):
     # Check append and return True when previous index is -1 and log is empty.
     current_log = []
-    assert log.append_entry(
+    assert log.append_entries(
         current_log,
         -1,
         1,
-        log.LogEntry(1, "x"),
+        [log.LogEntry(1, "x"), log.LogEntry(1, "y")],
     )
-    assert len(current_log) == 1
+    assert len(current_log) == 2
     assert current_log[0].item == "x"
+    assert current_log[1].item == "y"
 
-    # Check replace and return True when previous index is -1 and log is not
-    # empty.
+    # Check return False when previous index is -1 and log is not empty.
     current_log = simple_log.copy()
-    assert log.append_entry(
-        current_log,
-        -1,
-        1,
-        log.LogEntry(1, "x"),
+    assert not log.append_entries(
+        current_log, -1, 1, [log.LogEntry(1, "x"), log.LogEntry(1, "y")]
     )
-    assert len(current_log) == 3
-    assert current_log[0].item == "x"
-    assert current_log[1].item == "b"
 
 
 def test_append_entries_paper(paper_log):
