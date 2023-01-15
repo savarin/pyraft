@@ -65,7 +65,7 @@ def append_entries(
                 for _ in range(len(log) - previous_index - 2):
                     log.pop()
 
-    # Require that appending at the start of the log to an empty log.
+    # Require appends to the start of the log is to an empty log.
     if previous_index == -1:
         if len(log) == 0:
             log += entries

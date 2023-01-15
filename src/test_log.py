@@ -57,6 +57,49 @@ def test_append_entry(simple_log):
 
 
 def test_append_entries_simple(simple_log):
+    # Check for previous_index.
+    assert log.append_entries([], -1, 1, [])
+    assert not log.append_entries([], 0, 1, [])
+
+    # Check for previous_term.
+    assert log.append_entries(simple_log.copy(), 0, 1, [])
+    assert not log.append_entries(simple_log.copy(), 0, 0, [])
+
+    # Check for simple append.
+    current_log = []
+    assert log.append_entries(current_log, -1, 1, [log.LogEntry(1, "a")])
+    assert current_log == [log.LogEntry(1, "a")]
+
+    # Check append only works as expected.
+    current_log = simple_log.copy()
+    assert log.append_entries(
+        current_log,
+        2,
+        1,
+        [log.LogEntry(1, "x"), log.LogEntry(1, "y"), log.LogEntry(1, "z")],
+    )
+    assert len(current_log) == 6
+    assert current_log[0].item == "a"
+    assert current_log[1].item == "b"
+    assert current_log[2].item == "c"
+    assert current_log[3].item == "x"
+    assert current_log[4].item == "y"
+    assert current_log[5].item == "z"
+
+    # Check replace and append work as expected.
+    current_log = simple_log.copy()
+    assert log.append_entries(
+        current_log,
+        0,
+        1,
+        [log.LogEntry(2, "x"), log.LogEntry(2, "y"), log.LogEntry(2, "z")],
+    )
+    assert len(current_log) == 4
+    assert current_log[0].item == "a"
+    assert current_log[1].item == "x"
+    assert current_log[2].item == "y"
+    assert current_log[3].item == "z"
+
     # Check append and return True when previous index is -1 and log is empty.
     current_log = []
     assert log.append_entries(
