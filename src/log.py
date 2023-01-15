@@ -18,7 +18,7 @@ def append_entry(
     modify at 0 or 1, returning True. Returns False if try to previous_index
     3 or more.
 
-    [a b c]  d e 4
+    [a b c]  d e f
      ^ ^ ^   ^ ^ ^
      0 1 2   3 4 5
     """

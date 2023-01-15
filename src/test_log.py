@@ -19,41 +19,40 @@ def paper_log():
 
 def test_append_entry(simple_log):
     # Check return False when previous index past last index in log.
-    current_log = simple_log.copy()
     assert not log.append_entry(
-        current_log,
+        simple_log.copy(),
         3,
         1,
         log.LogEntry(1, "x"),
     )
 
     # Check append and return True when previous index is last index in log.
-    current_log = simple_log.copy()
+    log_1 = simple_log.copy()
     assert log.append_entry(
-        current_log,
+        log_1,
         2,
         1,
         log.LogEntry(1, "x"),
     )
-    assert len(current_log) == 4
-    assert current_log[0].item == "a"
-    assert current_log[1].item == "b"
-    assert current_log[2].item == "c"
-    assert current_log[3].item == "x"
+    assert len(log_1) == 4
+    assert log_1[0].item == "a"
+    assert log_1[1].item == "b"
+    assert log_1[2].item == "c"
+    assert log_1[3].item == "x"
 
     # Check replace and return True when previous index is less than the last
     # index in log.
-    current_log = simple_log.copy()
+    log_2 = simple_log.copy()
     assert log.append_entry(
-        current_log,
+        log_2,
         0,
         1,
         log.LogEntry(1, "x"),
     )
-    assert len(current_log) == 3
-    assert current_log[0].item == "a"
-    assert current_log[1].item == "x"
-    assert current_log[2].item == "c"
+    assert len(log_2) == 3
+    assert log_2[0].item == "a"
+    assert log_2[1].item == "x"
+    assert log_2[2].item == "c"
 
 
 def test_append_entries_simple(simple_log):
@@ -66,56 +65,55 @@ def test_append_entries_simple(simple_log):
     assert not log.append_entries(simple_log.copy(), 0, 0, [])
 
     # Check for simple append.
-    current_log = []
-    assert log.append_entries(current_log, -1, 1, [log.LogEntry(1, "a")])
-    assert current_log == [log.LogEntry(1, "a")]
+    log_1 = []
+    assert log.append_entries(log_1, -1, 1, [log.LogEntry(1, "a")])
+    assert log_1 == [log.LogEntry(1, "a")]
 
     # Check append only works as expected.
-    current_log = simple_log.copy()
+    log_2 = simple_log.copy()
     assert log.append_entries(
-        current_log,
+        log_2,
         2,
         1,
         [log.LogEntry(1, "x"), log.LogEntry(1, "y"), log.LogEntry(1, "z")],
     )
-    assert len(current_log) == 6
-    assert current_log[0].item == "a"
-    assert current_log[1].item == "b"
-    assert current_log[2].item == "c"
-    assert current_log[3].item == "x"
-    assert current_log[4].item == "y"
-    assert current_log[5].item == "z"
+    assert len(log_2) == 6
+    assert log_2[0].item == "a"
+    assert log_2[1].item == "b"
+    assert log_2[2].item == "c"
+    assert log_2[3].item == "x"
+    assert log_2[4].item == "y"
+    assert log_2[5].item == "z"
 
     # Check replace and append work as expected.
-    current_log = simple_log.copy()
+    log_3 = simple_log.copy()
     assert log.append_entries(
-        current_log,
+        log_3,
         0,
         1,
         [log.LogEntry(2, "x"), log.LogEntry(2, "y"), log.LogEntry(2, "z")],
     )
-    assert len(current_log) == 4
-    assert current_log[0].item == "a"
-    assert current_log[1].item == "x"
-    assert current_log[2].item == "y"
-    assert current_log[3].item == "z"
+    assert len(log_3) == 4
+    assert log_3[0].item == "a"
+    assert log_3[1].item == "x"
+    assert log_3[2].item == "y"
+    assert log_3[3].item == "z"
 
     # Check append and return True when previous index is -1 and log is empty.
-    current_log = []
+    log_4 = []
     assert log.append_entries(
-        current_log,
+        log_4,
         -1,
         1,
         [log.LogEntry(1, "x"), log.LogEntry(1, "y")],
     )
-    assert len(current_log) == 2
-    assert current_log[0].item == "x"
-    assert current_log[1].item == "y"
+    assert len(log_4) == 2
+    assert log_4[0].item == "x"
+    assert log_4[1].item == "y"
 
     # Check return False when previous index is -1 and log is not empty.
-    current_log = simple_log.copy()
     assert not log.append_entries(
-        current_log, -1, 1, [log.LogEntry(1, "x"), log.LogEntry(1, "y")]
+        simple_log.copy(), -1, 1, [log.LogEntry(1, "x"), log.LogEntry(1, "y")]
     )
 
 
@@ -125,8 +123,7 @@ def test_append_entries_paper(paper_log):
     assert not log.append_entries(log_1, 9, 6, [log.LogEntry(8, "x")])
 
     log_2 = paper_log.copy()
-    for _ in range(5):
-        log_2.pop()
+    [log_2.pop() for _ in range(5)]
     assert not log.append_entries(log_2, 9, 6, [log.LogEntry(8, "x")])
 
     log_3 = paper_log.copy()
@@ -142,14 +139,12 @@ def test_append_entries_paper(paper_log):
     assert log_4[10].item == "x"
 
     log_5 = paper_log.copy()
-    for _ in range(5):
-        log_5.pop()
+    [log_5.pop() for _ in range(5)]
     log_5 += [log.LogEntry(4, "5"), log.LogEntry(4, "6")]
     assert not log.append_entries(log_5, 9, 6, [log.LogEntry(8, "x")])
 
     log_6 = paper_log.copy()
-    for _ in range(7):
-        log_6.pop()
+    [log_6.pop() for _ in range(7)]
     log_6 += [log.LogEntry(2, "3"), log.LogEntry(2, "4"), log.LogEntry(2, "5")]
     log_6 += [
         log.LogEntry(3, "6"),
