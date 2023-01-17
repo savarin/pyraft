@@ -26,7 +26,52 @@ def paper_log():
         raftlog.LogEntry(6, "8"),
         raftlog.LogEntry(6, "9"),
     ]
+
     return paper_log
+
+
+@pytest.fixture
+def logs_by_identifier(paper_log):
+    logs_by_identifier = {}
+
+    log_a = paper_log.copy()
+    log_a.pop()
+    logs_by_identifier["a"] = log_a
+
+    log_b = paper_log.copy()
+    [log_b.pop() for _ in range(5)]
+    logs_by_identifier["b"] = log_b
+
+    log_c = paper_log.copy()
+    log_c.append(raftlog.LogEntry(6, "10"))
+    logs_by_identifier["c"] = log_c
+
+    log_d = paper_log.copy()
+    log_d += [raftlog.LogEntry(7, "10"), raftlog.LogEntry(7, "11")]
+    logs_by_identifier["d"] = log_d
+
+    log_e = paper_log.copy()
+    [log_e.pop() for _ in range(5)]
+    log_e += [raftlog.LogEntry(4, "5"), raftlog.LogEntry(4, "6")]
+    logs_by_identifier["e"] = log_e
+
+    log_f = paper_log.copy()
+    [log_f.pop() for _ in range(7)]
+    log_f += [
+        raftlog.LogEntry(2, "3"),
+        raftlog.LogEntry(2, "4"),
+        raftlog.LogEntry(2, "5"),
+    ]
+    log_f += [
+        raftlog.LogEntry(3, "6"),
+        raftlog.LogEntry(3, "7"),
+        raftlog.LogEntry(3, "8"),
+        raftlog.LogEntry(3, "9"),
+        raftlog.LogEntry(3, "10"),
+    ]
+    logs_by_identifier["f"] = log_f
+
+    return logs_by_identifier
 
 
 def test_append_entry(simple_log):
@@ -129,44 +174,29 @@ def test_append_entries_simple(simple_log):
     )
 
 
-def test_append_entries_paper(paper_log):
-    log_1 = paper_log.copy()
-    log_1.pop()
-    assert not raftlog.append_entries(log_1, 9, 6, [raftlog.LogEntry(8, "x")])
+def test_append_entries_paper(logs_by_identifier):
+    assert not raftlog.append_entries(
+        logs_by_identifier["a"], 9, 6, [raftlog.LogEntry(8, "x")]
+    )
 
-    log_2 = paper_log.copy()
-    [log_2.pop() for _ in range(5)]
-    assert not raftlog.append_entries(log_2, 9, 6, [raftlog.LogEntry(8, "x")])
+    assert not raftlog.append_entries(
+        logs_by_identifier["b"], 9, 6, [raftlog.LogEntry(8, "x")]
+    )
 
-    log_3 = paper_log.copy()
-    log_3.append(raftlog.LogEntry(6, "10"))
-    assert raftlog.append_entries(log_3, 9, 6, [raftlog.LogEntry(8, "x")])
-    assert len(log_3) == 11
-    assert log_3[10].item == "x"
+    log_c = logs_by_identifier["c"]
+    assert raftlog.append_entries(log_c, 9, 6, [raftlog.LogEntry(8, "x")])
+    assert len(log_c) == 11
+    assert log_c[10].item == "x"
 
-    log_4 = paper_log.copy()
-    log_4 += [raftlog.LogEntry(7, "10"), raftlog.LogEntry(7, "11")]
-    assert raftlog.append_entries(log_4, 9, 6, [raftlog.LogEntry(8, "x")])
-    assert len(log_4) == 11
-    assert log_4[10].item == "x"
+    log_d = logs_by_identifier["d"]
+    assert raftlog.append_entries(log_d, 9, 6, [raftlog.LogEntry(8, "x")])
+    assert len(log_d) == 11
+    assert log_d[10].item == "x"
 
-    log_5 = paper_log.copy()
-    [log_5.pop() for _ in range(5)]
-    log_5 += [raftlog.LogEntry(4, "5"), raftlog.LogEntry(4, "6")]
-    assert not raftlog.append_entries(log_5, 9, 6, [raftlog.LogEntry(8, "x")])
+    assert not raftlog.append_entries(
+        logs_by_identifier["e"], 9, 6, [raftlog.LogEntry(8, "x")]
+    )
 
-    log_6 = paper_log.copy()
-    [log_6.pop() for _ in range(7)]
-    log_6 += [
-        raftlog.LogEntry(2, "3"),
-        raftlog.LogEntry(2, "4"),
-        raftlog.LogEntry(2, "5"),
-    ]
-    log_6 += [
-        raftlog.LogEntry(3, "6"),
-        raftlog.LogEntry(3, "7"),
-        raftlog.LogEntry(3, "8"),
-        raftlog.LogEntry(3, "9"),
-        raftlog.LogEntry(3, "10"),
-    ]
-    assert not raftlog.append_entries(log_6, 9, 6, [raftlog.LogEntry(8, "x")])
+    assert not raftlog.append_entries(
+        logs_by_identifier["e"], 9, 6, [raftlog.LogEntry(8, "x")]
+    )

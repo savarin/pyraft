@@ -1,7 +1,7 @@
 import pytest
 
 import raftserver
-from test_raftlog import paper_log
+from test_raftlog import paper_log, logs_by_identifier
 
 
 def init_raft_state(
@@ -15,12 +15,21 @@ def init_raft_state(
     return raft_state
 
 
-def test_handle_append_entries_response(paper_log) -> None:
-    log_1 = paper_log.copy()
-    log_1.pop()
-    leader_state = init_raft_state(paper_log.copy(), 6, raftserver.StateEnum.LEADER, 9)
-    follower_state = init_raft_state(log_1, 6, raftserver.StateEnum.FOLLOWER, None)
-    callback = follower_state.handle_append_entries
+@pytest.fixture
+def init_callback(logs_by_identifier):
+    def closure(identifier, current_term):
+        follower_state = init_raft_state(
+            logs_by_identifier[identifier],
+            current_term,
+            raftserver.StateEnum.FOLLOWER,
+            None,
+        )
+        return follower_state.handle_append_entries
 
-    assert leader_state.handle_append_entries_response(callback)
+    return closure
+
+
+def test_handle_append_entries_response(paper_log, init_callback) -> None:
+    leader_state = init_raft_state(paper_log, 6, raftserver.StateEnum.LEADER, 9)
+    assert leader_state.handle_append_entries_response(init_callback("a", 6))
     assert leader_state.next_index == 9
