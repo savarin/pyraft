@@ -175,28 +175,34 @@ def test_append_entries_simple(simple_log):
 
 
 def test_append_entries_paper(logs_by_identifier):
+    # Figure 7a
     assert not raftlog.append_entries(
         logs_by_identifier["a"], 9, 6, [raftlog.LogEntry(8, "x")]
     )
 
+    # Figure 7b
     assert not raftlog.append_entries(
         logs_by_identifier["b"], 9, 6, [raftlog.LogEntry(8, "x")]
     )
 
+    # Figure 7c
     log_c = logs_by_identifier["c"]
     assert raftlog.append_entries(log_c, 9, 6, [raftlog.LogEntry(8, "x")])
     assert len(log_c) == 11
     assert log_c[10].item == "x"
 
+    # Figure 7d
     log_d = logs_by_identifier["d"]
     assert raftlog.append_entries(log_d, 9, 6, [raftlog.LogEntry(8, "x")])
     assert len(log_d) == 11
     assert log_d[10].item == "x"
 
+    # Figure 7e
     assert not raftlog.append_entries(
         logs_by_identifier["e"], 9, 6, [raftlog.LogEntry(8, "x")]
     )
 
+    # Figure 7f
     assert not raftlog.append_entries(
         logs_by_identifier["e"], 9, 6, [raftlog.LogEntry(8, "x")]
     )
