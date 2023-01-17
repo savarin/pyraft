@@ -29,10 +29,6 @@ class RaftState:
         previous_term = self.log[previous_index].term
         return previous_index, previous_term, self.log[self.next_index :]
 
-    def handle_client_log_append(self, item: str):
-        # Client adds a log entry (received by leader).
-        self.log.append(raftlog.LogEntry(self.current_term, item))
-
     def handle_append_entries(
         self,
         previous_index: int,
@@ -53,6 +49,10 @@ class RaftState:
 
         return response, properties
 
+    def handle_client_log_append(self, item: str):
+        # Client adds a log entry (received by leader).
+        self.log.append(raftlog.LogEntry(self.current_term, item))
+
     def handle_append_entries_response(self, response, properties, callback):
         # Follower response (received by leader).
         if response:
@@ -63,6 +63,7 @@ class RaftState:
         arguments = self.create_append_entries_arguments()
         return callback(*arguments)
 
-    def handle_leader_heartbeat(self):
+    def handle_leader_heartbeat(self, callback):
         # Leader heartbeat. Send AppendEntries to all followers.
-        pass
+        arguments = self.create_append_entries_arguments()
+        return callback(*arguments)

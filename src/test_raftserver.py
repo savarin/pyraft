@@ -1,5 +1,6 @@
 import pytest
 
+import raftlog
 import raftserver
 from test_raftlog import paper_log, logs_by_identifier
 
@@ -27,6 +28,21 @@ def init_callback(logs_by_identifier):
         return follower_state.handle_append_entries
 
     return closure
+
+
+def test_handle_append_entries(logs_by_identifier) -> None:
+    # Figure 7a
+    follower_state = init_raft_state(
+        logs_by_identifier["a"], 6, raftserver.StateEnum.FOLLOWER, None
+    )
+
+    response, properties = follower_state.handle_append_entries(
+        8, 6, [raftlog.LogEntry(6, "9")]
+    )
+    assert response
+    assert properties["pre_length"] == 9
+    assert properties["post_length"] == 10
+    assert properties["entries_length"] == 1
 
 
 def test_handle_append_entries_response(paper_log, init_callback) -> None:
@@ -170,3 +186,17 @@ def test_handle_append_entries_response(paper_log, init_callback) -> None:
         0
     ]
     assert leader_state.next_index == 10
+
+
+def test_handle_leader_heartbeat(logs_by_identifier, init_callback) -> None:
+    # Figure 7a
+    leader_state = init_raft_state(
+        logs_by_identifier["a"], 6, raftserver.StateEnum.LEADER, 9
+    )
+    callback = init_callback("a", 6)
+
+    response, properties = leader_state.handle_leader_heartbeat(callback)
+    assert response
+    assert properties["pre_length"] == 9
+    assert properties["post_length"] == 9
+    assert properties["entries_length"] == 0
