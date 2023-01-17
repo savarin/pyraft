@@ -45,22 +45,23 @@ class RaftState:
             self.log, previous_index, previous_term, entries
         )
 
-        return response, pre_length, len(self.log)
+        properties = {
+            "pre_length": pre_length,
+            "post_length": len(self.log),
+            "entries_length": len(entries),
+        }
 
-    def handle_append_entries_response(self, response, callback):
+        return response, properties
+
+    def handle_append_entries_response(self, response, properties, callback):
         # Follower response (received by leader).
         if response:
-            return True, None, None
+            self.next_index += properties["entries_length"]
+            return True, properties
 
         self.next_index -= 1
         arguments = self.create_append_entries_arguments()
-        response, pre_length, post_length = callback(*arguments)
-
-        if response:
-            _, _, entries = arguments
-            self.next_index += len(entries)
-
-        return response, pre_length, post_length
+        return callback(*arguments)
 
     def handle_leader_heartbeat(self):
         # Leader heartbeat. Send AppendEntries to all followers.

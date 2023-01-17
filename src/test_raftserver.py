@@ -34,85 +34,139 @@ def test_handle_append_entries_response(paper_log, init_callback) -> None:
     leader_state = init_raft_state(paper_log, 6, raftserver.StateEnum.LEADER, 10)
     callback = init_callback("a", 6)
 
-    response, pre, post = leader_state.handle_append_entries_response(False, callback)
+    response, properties = leader_state.handle_append_entries_response(
+        False, None, callback
+    )
     assert response
-    assert pre == 9
-    assert post == 10
+    assert properties["pre_length"] == 9
+    assert properties["post_length"] == 10
+    assert properties["entries_length"] == 1
+    assert leader_state.next_index == 9
+
+    assert leader_state.handle_append_entries_response(response, properties, callback)[
+        0
+    ]
     assert leader_state.next_index == 10
 
     # Figure 7b
     leader_state = init_raft_state(paper_log, 6, raftserver.StateEnum.LEADER, 10)
     callback = init_callback("b", 6)
+    response, properties = False, None
 
     for i in range(5):
-        response, pre, post = leader_state.handle_append_entries_response(
-            False, callback
+        response, properties = leader_state.handle_append_entries_response(
+            response, properties, callback
         )
         assert not response
-        assert pre == 4
-        assert post == 4
+        assert properties["pre_length"] == 4
+        assert properties["post_length"] == 4
+        assert properties["entries_length"] == i + 1
         assert leader_state.next_index == 9 - i
 
-    response, pre, post = leader_state.handle_append_entries_response(False, callback)
+    response, properties = leader_state.handle_append_entries_response(
+        False, None, callback
+    )
     assert response
-    assert pre == 4
-    assert post == 10
+    assert properties["pre_length"] == 4
+    assert properties["post_length"] == 10
+    assert properties["entries_length"] == 6
+    assert leader_state.next_index == 4
+
+    assert leader_state.handle_append_entries_response(response, properties, callback)[
+        0
+    ]
     assert leader_state.next_index == 10
 
     # Figure 7c
     leader_state = init_raft_state(paper_log, 6, raftserver.StateEnum.LEADER, 10)
     callback = init_callback("c", 6)
 
-    response, pre, post = leader_state.handle_append_entries_response(False, callback)
+    response, properties = leader_state.handle_append_entries_response(
+        False, None, callback
+    )
     assert response
-    assert pre == 11
-    assert post == 11
+    assert properties["pre_length"] == 11
+    assert properties["post_length"] == 11
+    assert properties["entries_length"] == 1
+    assert leader_state.next_index == 9
+
+    assert leader_state.handle_append_entries_response(response, properties, callback)[
+        0
+    ]
     assert leader_state.next_index == 10
 
     # Figure 7d
     leader_state = init_raft_state(paper_log, 6, raftserver.StateEnum.LEADER, 10)
     callback = init_callback("d", 6)
 
-    response, pre, post = leader_state.handle_append_entries_response(False, callback)
+    response, properties = leader_state.handle_append_entries_response(
+        False, None, callback
+    )
     assert response
-    assert pre == 12
-    assert post == 12
+    assert properties["pre_length"] == 12
+    assert properties["post_length"] == 12
+    assert properties["entries_length"] == 1
+    assert leader_state.next_index == 9
+
+    assert leader_state.handle_append_entries_response(response, properties, callback)[
+        0
+    ]
     assert leader_state.next_index == 10
 
     # Figure 7e
     leader_state = init_raft_state(paper_log, 6, raftserver.StateEnum.LEADER, 10)
     callback = init_callback("e", 6)
+    response, properties = False, None
 
     for i in range(4):
-        response, pre, post = leader_state.handle_append_entries_response(
-            False, callback
+        response, properties = leader_state.handle_append_entries_response(
+            response, properties, callback
         )
         assert not response
-        assert pre == 7
-        assert post == 7
+        assert properties["pre_length"] == 7
+        assert properties["post_length"] == 7
+        assert properties["entries_length"] == i + 1
         assert leader_state.next_index == 9 - i
 
-    response, pre, post = leader_state.handle_append_entries_response(False, callback)
+    response, properties = leader_state.handle_append_entries_response(
+        False, None, callback
+    )
     assert response
-    assert pre == 7
-    assert post == 10
+    assert properties["pre_length"] == 7
+    assert properties["post_length"] == 10
+    assert properties["entries_length"] == 5
+    assert leader_state.next_index == 5
+
+    assert leader_state.handle_append_entries_response(response, properties, callback)[
+        0
+    ]
     assert leader_state.next_index == 10
 
-    # Figure 7e
+    # Figure 7f
     leader_state = init_raft_state(paper_log, 6, raftserver.StateEnum.LEADER, 10)
     callback = init_callback("f", 6)
+    response, properties = False, None
 
     for i in range(6):
-        response, pre, post = leader_state.handle_append_entries_response(
-            False, callback
+        response, properties = leader_state.handle_append_entries_response(
+            response, properties, callback
         )
         assert not response
-        assert pre == 11
-        assert post == 11
+        assert properties["pre_length"] == 11
+        assert properties["post_length"] == 11
+        assert properties["entries_length"] == i + 1
         assert leader_state.next_index == 9 - i
 
-    response, pre, post = leader_state.handle_append_entries_response(False, callback)
+    response, properties = leader_state.handle_append_entries_response(
+        False, None, callback
+    )
     assert response
-    assert pre == 11
-    assert post == 10
+    assert properties["pre_length"] == 11
+    assert properties["post_length"] == 10
+    assert properties["entries_length"] == 7
+    assert leader_state.next_index == 3
+
+    assert leader_state.handle_append_entries_response(response, properties, callback)[
+        0
+    ]
     assert leader_state.next_index == 10
