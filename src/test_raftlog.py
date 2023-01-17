@@ -39,7 +39,7 @@ def logs_by_identifier(paper_log):
     logs_by_identifier["a"] = log_a
 
     log_b = paper_log.copy()
-    [log_b.pop() for _ in range(5)]
+    [log_b.pop() for _ in range(6)]
     logs_by_identifier["b"] = log_b
 
     log_c = paper_log.copy()
