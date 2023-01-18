@@ -19,8 +19,11 @@ class LogEntry:
     term: int
     item: str
 
+    def __equals__(self, other):
+        return self.term == other.term and self.item == other.item
+
     def __repr__(self):
-        return f"{self.term},{self.item}"
+        return f"LogEntry({self.term}, {self.item})"
 
 
 def append_entry(
