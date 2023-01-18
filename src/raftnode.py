@@ -1,3 +1,8 @@
+"""
+Network runtime that operates in the background, allowing servers to send and
+receive messages from each other. Minor changes to Dave's code. Wraps up a
+combination of threads, queues and sockets.
+"""
 import dataclasses
 import os
 import queue
@@ -23,6 +28,23 @@ def initialize_socket(identifier):
 
 @dataclasses.dataclass
 class RaftNode:
+    """
+    Represents environment that sends/receives raw messages in the cluster. No
+    logic to parse messages, mainly abstraction to get messages to go to the
+    intended target.
+
+    To send a message to any other node in the cluster, use `send`. This
+    operation is non-blocking and returns immediately. There is no guarantee of
+    message delivery.
+
+    > node.send(1, b"hello")
+
+    To receive a single message, use `receive`. This is a blocking operation
+    that waits for a message to arrive from anywhere.
+
+    > message = node.receive()
+    """
+
     identifier: int
 
     def __post_init__(self):
@@ -51,6 +73,10 @@ class RaftNode:
             client.close()
 
     def listen(self):
+        """
+        Run in background thread to listen for incoming connections and places
+        messages in incoming queue.
+        """
         while True:
             client, address = self.socket.accept()
             threading.Thread(target=self._listen, args=(client,)).start()
@@ -71,6 +97,11 @@ class RaftNode:
         return sock
 
     def deliver(self, identifier):
+        """
+        Run in background thread to deliver outgoing messages to other nodes.
+        The delivery is best-effort attempt, in which the message is discarded
+        if the remote server is not operational.
+        """
         sock = None
         address = ADDRESS_BY_IDENTIFIER[identifier]
 
@@ -80,6 +111,7 @@ class RaftNode:
                 sock = self._deliver(sock, address, message)
 
         finally:
+            # Defensive coding to avoid partial system failure.
             print("panic!")
             os._exit(1)
 
@@ -112,6 +144,7 @@ def run(identifier):
         target, message = prompt.split(maxsplit=1)
         node.send(int(target), message.encode("ascii"))
 
+    # Ensures all threads are handled.
     print("end.")
     os._exit(0)
 
