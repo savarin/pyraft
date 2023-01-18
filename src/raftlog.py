@@ -1,3 +1,15 @@
+"""
+The core of the Raft algorithm involves appending new entries to the log. The
+append_entries operation is subject to a number of constraints.
+
+- Duplicate transactions have no adverse effect.
+- The log may never have gaps.
+- When adding to the log, information about prior entry must match. This is
+  also known as the log-continuity condition.
+- If entries have a term number less than the term of the entry to be replaced,
+  the entries with the smaller term and successive ones are deleted.
+"""
+
 from typing import List
 import dataclasses
 
@@ -15,7 +27,7 @@ def append_entry(
     log: List[LogEntry], previous_index: int, previous_term: int, entry: LogEntry
 ):
     """
-    Choose index starting from 0.
+    Helper to add entry one-by-one. Choose index starting from 0.
 
     Suppose have 3 elements. Either append starting at previous_index 2 or
     modify at 0 or 1, returning True. Returns False if try to previous_index
@@ -24,6 +36,8 @@ def append_entry(
     [a b c]  d e f
      ^ ^ ^   ^ ^ ^
      0 1 2   3 4 5
+
+    If log is empty, the log is simply replaced as per append_entries.
     """
     if 0 <= previous_index < len(log):
         if previous_index < len(log) - 1:
@@ -53,7 +67,9 @@ def append_entries(
             return False
 
         # If term number of existing entry is less than term of entry to be
-        # replaced, remove that entry and following entries.
+        # replaced, remove that entry and following entries. Discussed in
+        # Figure 2 of the Raft paper, conflict resolved by the later term as
+        # there can only be one leader.
         if previous_index + 1 <= len(log) - 1 and len(entries) > 0:
             if log[previous_index].term < entries[0].term:
                 for _ in range(len(log) - previous_index - 2):
