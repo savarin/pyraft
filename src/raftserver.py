@@ -49,7 +49,11 @@ class RaftServer:
             if not prompt:
                 return None
 
-            target, command = prompt.split(maxsplit=1)
+            elif not prompt[0].isdigit():
+                exec(f"print({prompt})")
+                continue
+
+            target, command = int(prompt[0]), prompt[2:]
 
             if command == "replicate":
 
@@ -62,13 +66,13 @@ class RaftServer:
                         entries,
                     )
                     self.node.send(
-                        int(target), raftmessage.encode_message(message).encode("ascii")
+                        target, raftmessage.encode_message(message).encode("ascii")
                     )
 
                 self.state.handle_leader_heartbeat(callback)
 
             else:
-                self.node.send(int(target), command.encode("ascii"))
+                self.node.send(target, command.encode("ascii"))
 
     def run(self):
         self.node.start()
