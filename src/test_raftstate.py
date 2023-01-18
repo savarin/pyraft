@@ -1,14 +1,14 @@
 import pytest
 
 import raftlog
-import raftserver
+import raftstate
 from test_raftlog import paper_log, logs_by_identifier
 
 
 def init_raft_state(
     log, current_term, current_state, next_index
-) -> raftserver.RaftState:
-    raft_state = raftserver.RaftState()
+) -> raftstate.RaftState:
+    raft_state = raftstate.RaftState()
     raft_state.log = log
     raft_state.current_term = current_term
     raft_state.current_state = current_state
@@ -22,7 +22,7 @@ def init_callback(logs_by_identifier):
         follower_state = init_raft_state(
             logs_by_identifier[identifier],
             current_term,
-            raftserver.StateEnum.FOLLOWER,
+            raftstate.StateEnum.FOLLOWER,
             None,
         )
         return follower_state.handle_append_entries
@@ -33,7 +33,7 @@ def init_callback(logs_by_identifier):
 def test_handle_append_entries(logs_by_identifier) -> None:
     # Figure 7a
     follower_state = init_raft_state(
-        logs_by_identifier["a"], 6, raftserver.StateEnum.FOLLOWER, None
+        logs_by_identifier["a"], 6, raftstate.StateEnum.FOLLOWER, None
     )
 
     response, properties = follower_state.handle_append_entries(
@@ -47,7 +47,7 @@ def test_handle_append_entries(logs_by_identifier) -> None:
 
 def test_handle_append_entries_response(paper_log, init_callback) -> None:
     # Figure 7a
-    leader_state = init_raft_state(paper_log, 6, raftserver.StateEnum.LEADER, 10)
+    leader_state = init_raft_state(paper_log, 6, raftstate.StateEnum.LEADER, 10)
     callback = init_callback("a", 6)
 
     response, properties = leader_state.handle_append_entries_response(
@@ -65,7 +65,7 @@ def test_handle_append_entries_response(paper_log, init_callback) -> None:
     assert leader_state.next_index == 10
 
     # Figure 7b
-    leader_state = init_raft_state(paper_log, 6, raftserver.StateEnum.LEADER, 10)
+    leader_state = init_raft_state(paper_log, 6, raftstate.StateEnum.LEADER, 10)
     callback = init_callback("b", 6)
     response, properties = False, None
 
@@ -94,7 +94,7 @@ def test_handle_append_entries_response(paper_log, init_callback) -> None:
     assert leader_state.next_index == 10
 
     # Figure 7c
-    leader_state = init_raft_state(paper_log, 6, raftserver.StateEnum.LEADER, 10)
+    leader_state = init_raft_state(paper_log, 6, raftstate.StateEnum.LEADER, 10)
     callback = init_callback("c", 6)
 
     response, properties = leader_state.handle_append_entries_response(
@@ -112,7 +112,7 @@ def test_handle_append_entries_response(paper_log, init_callback) -> None:
     assert leader_state.next_index == 10
 
     # Figure 7d
-    leader_state = init_raft_state(paper_log, 6, raftserver.StateEnum.LEADER, 10)
+    leader_state = init_raft_state(paper_log, 6, raftstate.StateEnum.LEADER, 10)
     callback = init_callback("d", 6)
 
     response, properties = leader_state.handle_append_entries_response(
@@ -130,7 +130,7 @@ def test_handle_append_entries_response(paper_log, init_callback) -> None:
     assert leader_state.next_index == 10
 
     # Figure 7e
-    leader_state = init_raft_state(paper_log, 6, raftserver.StateEnum.LEADER, 10)
+    leader_state = init_raft_state(paper_log, 6, raftstate.StateEnum.LEADER, 10)
     callback = init_callback("e", 6)
     response, properties = False, None
 
@@ -159,7 +159,7 @@ def test_handle_append_entries_response(paper_log, init_callback) -> None:
     assert leader_state.next_index == 10
 
     # Figure 7f
-    leader_state = init_raft_state(paper_log, 6, raftserver.StateEnum.LEADER, 10)
+    leader_state = init_raft_state(paper_log, 6, raftstate.StateEnum.LEADER, 10)
     callback = init_callback("f", 6)
     response, properties = False, None
 
@@ -191,7 +191,7 @@ def test_handle_append_entries_response(paper_log, init_callback) -> None:
 def test_handle_leader_heartbeat(logs_by_identifier, init_callback) -> None:
     # Figure 7a
     leader_state = init_raft_state(
-        logs_by_identifier["a"], 6, raftserver.StateEnum.LEADER, 9
+        logs_by_identifier["a"], 6, raftstate.StateEnum.LEADER, 9
     )
     callback = init_callback("a", 6)
 
