@@ -17,45 +17,37 @@ class RaftServer:
         self.state = raftstate.RaftState()
         self.node = raftnode.RaftNode(self.identifier)
 
-    def run(self):
-        self.node.start()
+    def pprint(self, string):
+        print(f"{string}\n{self.identifier} > ", end="")
 
-        def receive():
-            while True:
-                string = self.node.receive()
+    def receive(self):
+        while True:
+            string = self.node.receive()
+            self.pprint(f"\n{self.identifier}: {string}")
+
+            try:
+                message = raftmessage.decode_message(string)
                 print(
-                    f"\n{self.identifier}: receive {string}\n{self.identifier} > ",
-                    end="",
-                )
-
-                try:
-                    message = raftmessage.decode_message(string)
-                    print(
-                        self.state.handle_append_entries(
-                            message.previous_index,
-                            message.previous_term,
-                            message.entries,
-                        )
+                    self.state.handle_append_entries(
+                        message.previous_index,
+                        message.previous_term,
+                        message.entries,
                     )
-                    print(self.state.log)
+                )
+                self.pprint(self.state.log)
 
-                except rafthelpers.DecodeError:
-                    print(string)
+            except rafthelpers.DecodeError:
+                pass
 
-                except Exception as e:
-                    print(e)
+            except Exception as e:
+                self.pprint(e)
 
-        threading.Thread(target=receive, args=()).start()
-
-        if self.identifier == 0:
-            self.state.handle_client_log_append("a")
-            self.state.handle_client_log_append("b")
-
+    def instruct(self):
         while True:
             prompt = input(f"{self.identifier} > ")
 
             if not prompt:
-                break
+                return None
 
             target, command = prompt.split(maxsplit=1)
 
@@ -77,6 +69,16 @@ class RaftServer:
 
             else:
                 self.node.send(int(target), command.encode("ascii"))
+
+    def run(self):
+        self.node.start()
+        threading.Thread(target=self.receive, args=()).start()
+
+        if self.identifier == 0:
+            self.state.handle_client_log_append("a")
+            self.state.handle_client_log_append("b")
+
+        self.instruct()
 
         print("end.")
         os._exit(0)
