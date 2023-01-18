@@ -1,66 +1,87 @@
-from typing import Dict, List
 import dataclasses
+import os
+import sys
+import threading
 
 import rafthelpers
-import raftlog
-
-
-class Message:
-    pass
-
-
-@dataclasses.dataclass
-class AppendEntryRequest(Message):
-    source: int
-    target: int
-    previous_index: int
-    previous_term: int
-    entries: List[raftlog.LogEntry]
+import raftmessage
+import raftnode
+import raftstate
 
 
 @dataclasses.dataclass
-class AppendEntryResponse(Message):
-    source: int
-    target: int
-    success: bool
-    properties: Dict[str, int]
+class RaftServer:
+    identifier: int
 
+    def __post_init__(self):
+        self.state = raftstate.RaftState()
+        self.node = raftnode.RaftNode(self.identifier)
 
-def encode_message(message):
-    match message:
-        case AppendEntryRequest():
-            result = vars(message).copy()
-            entries = []
+    def run(self):
+        self.node.start()
 
-            for entry in message.entries:
-                entries.append(vars(entry))
+        def receive():
+            while True:
+                string = self.node.receive()
+                print(
+                    f"\n{self.identifier}: receive {string}\n{self.identifier} > ",
+                    end="",
+                )
 
-            result["entries"] = entries
-            return rafthelpers.encode_item(result)
+                try:
+                    message = raftmessage.decode_message(string)
+                    print(
+                        self.state.handle_append_entries(
+                            message.previous_index,
+                            message.previous_term,
+                            message.entries,
+                        )
+                    )
+                    print(self.state.log)
 
-        case AppendEntryResponse():
-            return rafthelpers.encode_item(message)
+                except rafthelpers.DecodeError:
+                    print(string)
 
+                except Exception as e:
+                    print(e)
 
-def decode_message(string):
-    attributes = rafthelpers.decode_item(string)
+        threading.Thread(target=receive, args=()).start()
 
-    if len(attributes) == 5:
-        entries = []
+        if self.identifier == 0:
+            self.state.handle_client_log_append("a")
+            self.state.handle_client_log_append("b")
 
-        for entry in attributes["entries"]:
-            entries.append(raftlog.LogEntry(**entry))
+        while True:
+            prompt = input(f"{self.identifier} > ")
 
-        attributes["entries"] = entries
-        return AppendEntryRequest(**attributes)
+            if not prompt:
+                break
 
-    elif len(attributes) == 4:
-        return AppendEntryResponse(**attributes)
+            target, command = prompt.split(maxsplit=1)
+
+            if command == "replicate":
+
+                def callback(previous_index, previous_term, entries):
+                    message = raftmessage.AppendEntryRequest(
+                        self.identifier,
+                        int(target),
+                        previous_index,
+                        previous_term,
+                        entries,
+                    )
+                    self.node.send(
+                        int(target), raftmessage.encode_message(message).encode("ascii")
+                    )
+
+                self.state.handle_leader_heartbeat(callback)
+
+            else:
+                self.node.send(int(target), command.encode("ascii"))
+
+        print("end.")
+        os._exit(0)
 
 
 if __name__ == "__main__":
-    message = AppendEntryRequest(
-        1, 2, 3, 4, [raftlog.LogEntry(5, "a"), raftlog.LogEntry(6, "b")]
-    )
-    string = encode_message(message)
-    breakpoint()
+    server = RaftServer(int(sys.argv[1]))
+    server.run()

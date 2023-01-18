@@ -2,6 +2,10 @@ import builtins
 import re
 
 
+class DecodeError(Exception):
+    pass
+
+
 def encode_item(element):
     if element is None:
         return ""
@@ -60,7 +64,7 @@ def decode_item(string):
             return {k: v for k, v in zip(elements[::2], elements[1::2])}, rest
 
         else:
-            raise ValueError("Malformed string.")
+            raise DecodeError("Malformed string.")
 
     return closure(string)[0]
 

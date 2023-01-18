@@ -1,9 +1,9 @@
 import raftlog
-import raftserver
+import raftmessage
 
 
 def test_message_translation():
-    message = raftserver.AppendEntryRequest(
+    message = raftmessage.AppendEntryRequest(
         1, 2, 3, 4, [raftlog.LogEntry(5, "a"), raftlog.LogEntry(6, "b")]
     )
 
@@ -12,5 +12,5 @@ def test_message_translation():
         + "14:previous_indexi3e13:previous_termi4e6:sourcei1e6:targeti2ee"
     )
 
-    assert raftserver.encode_message(message) == string
-    assert raftserver.decode_message(string) == message
+    assert raftmessage.encode_message(message) == string
+    assert raftmessage.decode_message(string) == message
