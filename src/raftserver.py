@@ -1,8 +1,13 @@
-from typing import List, Optional
+from typing import List
 import dataclasses
 import enum
+import json
+import os
+import sys
+import threading
 
 import raftlog
+import raftnode
 
 
 class StateEnum(enum.Enum):
@@ -16,7 +21,7 @@ class RaftState:
         self.log: List[raftlog.LogEntry] = []
         self.current_term: int = 1
         self.current_state: StateEnum = StateEnum.FOLLOWER
-        self.next_index: Optional[int] = None
+        self.next_index: int = 0
 
     def change_state(self, state_enum: StateEnum):
         self.current_state = state_enum
@@ -36,6 +41,7 @@ class RaftState:
         entries: List[raftlog.LogEntry],
     ):
         # Update to the log (received by a follower).
+
         pre_length = len(self.log)
         response = raftlog.append_entries(
             self.log, previous_index, previous_term, entries
@@ -67,3 +73,81 @@ class RaftState:
         # Leader heartbeat. Send AppendEntries to all followers.
         arguments = self.create_append_entries_arguments()
         return callback(*arguments)
+
+
+def run(identifier):
+    state = RaftState()
+    node = raftnode.RaftNode(identifier)
+    node.start()
+
+    def decode(payload):
+        items = payload["entries"].split(",")
+        entries = []
+
+        for i in range(0, len(items), 2):
+            entries.append(raftlog.LogEntry(int(items[i]), items[i + 1]))
+
+        payload["previous_index"] = int(payload["previous_index"])
+        payload["previous_term"] = int(payload["previous_term"])
+        payload["entries"] = entries
+        return payload
+
+    def receive():
+        while True:
+            message = node.receive()
+            print(f"\n{identifier}: receive: {message}\n{identifier} > ", end="")
+
+            try:
+                payload = json.loads(message)
+                payload = decode(payload)
+                state.handle_append_entries(
+                    payload["previous_index"],
+                    payload["previous_term"],
+                    payload["entries"],
+                )
+
+            except json.JSONDecodeError:
+                pass
+
+    threading.Thread(target=receive, args=()).start()
+
+    if identifier == 0:
+        state.handle_client_log_append("a")
+        state.handle_client_log_append("b")
+
+    while True:
+        prompt = input(f"{identifier} > ")
+
+        if not prompt:
+            break
+
+        target, message = prompt.split(maxsplit=1)
+
+        if message == "replicate":
+
+            def callback(previous_index, previous_term, entries):
+                payload = {
+                    "previous_index": previous_index,
+                    "previous_term": previous_term,
+                    "entries": ",".join([str(entry) for entry in entries]),
+                }
+
+                message = json.dumps(payload, separators=(",", ":"))
+                print(message)
+
+                node.send(int(target), message.encode("ascii"))
+
+            state.handle_leader_heartbeat(callback)
+
+        elif message == "expose":
+            print(",".join([str(entry) for entry in state.log]))
+
+        else:
+            node.send(int(target), message.encode("ascii"))
+
+    print("end.")
+    os._exit(0)
+
+
+if __name__ == "__main__":
+    run(int(sys.argv[1]))

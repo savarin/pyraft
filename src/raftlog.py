@@ -7,6 +7,9 @@ class LogEntry:
     term: int
     item: str
 
+    def __repr__(self):
+        return f"{self.term},{self.item}"
+
 
 def append_entry(
     log: List[LogEntry], previous_index: int, previous_term: int, entry: LogEntry
