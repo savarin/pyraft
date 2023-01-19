@@ -48,34 +48,43 @@ class RaftServer:
             if not prompt:
                 return None
 
-            elif not prompt[0].isdigit():
+            elif prompt == "test":
+                for _ in range(len(self.state.log)):
+                    self.state.log.pop()
+
+                self.state.handle_client_log_append("a")
+                self.state.handle_client_log_append("b")
+                self.state.handle_client_log_append("c")
+
+                followers = list(raftnode.ADDRESS_BY_IDENTIFIER.keys())
+                followers.remove(self.identifier)
+
+                messages = self.state.handle_message(
+                    raftmessage.UpdateFollowers(0, 0, followers)
+                )
+
+                for follower in followers:
+                    messages.append(
+                        raftmessage.Text(self.identifier, follower, "expose")
+                    )
+
+                self.send(messages)
+
+            elif prompt[0].isdigit() and prompt[1] == " ":
+                target, command = int(prompt[0]), prompt[2:]
+                messages = [raftmessage.Text(self.identifier, target, command)]
+                self.send(messages)
+
+            else:
                 try:
                     exec(f"print({prompt})")
 
                 except Exception as e:
                     print(f"Exception: {e}")
 
-                continue
-
-            target, command = int(prompt[0]), prompt[2:]
-
-            if command == "replicate":
-                messages = self.state.handle_message(
-                    raftmessage.UpdateFollowers(0, 0, [1])
-                )
-
-            else:
-                messages = [raftmessage.Text(self.identifier, target, command)]
-
-            self.send(messages)
-
     def run(self):
         self.node.start()
         threading.Thread(target=self.respond, args=()).start()
-
-        if self.identifier == 0:
-            self.state.handle_client_log_append("a")
-            self.state.handle_client_log_append("b")
 
         self.instruct()
 

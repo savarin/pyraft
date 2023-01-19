@@ -98,7 +98,12 @@ class RaftState:
         return messages
 
     def handle_text(self, source, target, text):
-        print(f"\n{source} > {target} {text}\n{target} > ", end="")
+        if text == "expose":
+            print(f"\n+ {str(self.log)}\n{target} > ", end="")
+
+        else:
+            print(f"\n{source} > {target} {text}\n{target} > ", end="")
+
         return None
 
     def handle_message(self, message):

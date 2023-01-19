@@ -12,8 +12,9 @@ import threading
 
 
 ADDRESS_BY_IDENTIFIER = {
-    0: ("localhost", 8000),
-    1: ("localhost", 9000),
+    0: ("localhost", 7000),
+    1: ("localhost", 8000),
+    2: ("localhost", 9000),
 }
 
 
