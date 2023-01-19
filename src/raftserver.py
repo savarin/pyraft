@@ -22,18 +22,12 @@ class RaftServer:
 
     def receive(self):
         while True:
-            string = self.node.receive()
-            self.pprint(f"\n{self.identifier}: {string}")
+            payload = self.node.receive()
+            self.pprint(f"\n{self.identifier}: {payload}")
 
             try:
-                message = raftmessage.decode_message(string)
-                print(
-                    self.state.handle_append_entries(
-                        message.previous_index,
-                        message.previous_term,
-                        message.entries,
-                    )
-                )
+                request = raftmessage.decode_message(payload)
+                print(self.state.handle_message(request))
                 self.pprint(self.state.log)
 
             except rafthelpers.DecodeError:
@@ -56,20 +50,17 @@ class RaftServer:
             target, command = int(prompt[0]), prompt[2:]
 
             if command == "replicate":
-
-                def callback(previous_index, previous_term, entries):
-                    message = raftmessage.AppendEntryRequest(
-                        self.identifier,
-                        int(target),
-                        previous_index,
-                        previous_term,
-                        entries,
-                    )
-                    self.node.send(
-                        target, raftmessage.encode_message(message).encode("ascii")
-                    )
-
-                self.state.handle_leader_heartbeat(callback)
+                arguments = self.state.create_append_entries_arguments()
+                message = raftmessage.AppendEntryRequest(
+                    self.identifier,
+                    target,
+                    arguments[0],
+                    arguments[1],
+                    arguments[2],
+                )
+                self.node.send(
+                    target, raftmessage.encode_message(message).encode("ascii")
+                )
 
             else:
                 self.node.send(target, command.encode("ascii"))

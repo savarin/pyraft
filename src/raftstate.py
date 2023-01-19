@@ -7,6 +7,7 @@ import dataclasses
 import enum
 
 import raftlog
+import raftmessage
 
 
 class StateEnum(enum.Enum):
@@ -35,6 +36,8 @@ class RaftState:
 
     def handle_append_entries(
         self,
+        source: int,
+        target: int,
         previous_index: int,
         previous_term: int,
         entries: List[raftlog.LogEntry],
@@ -44,7 +47,7 @@ class RaftState:
         """
 
         pre_length = len(self.log)
-        response = raftlog.append_entries(
+        success = raftlog.append_entries(
             self.log, previous_index, previous_term, entries
         )
 
@@ -54,7 +57,7 @@ class RaftState:
             "entries_length": len(entries),
         }
 
-        return response, properties
+        return raftmessage.AppendEntryResponse(target, source, success, properties)
 
     def handle_client_log_append(self, item: str):
         """
@@ -62,7 +65,9 @@ class RaftState:
         """
         self.log.append(raftlog.LogEntry(self.current_term, item))
 
-    def handle_append_entries_response(self, response, properties, callback):
+    def handle_append_entries_response(
+        self, source, target, response, properties, callback
+    ):
         """
         Follower response (received by leader).
         """
@@ -71,12 +76,20 @@ class RaftState:
             return True, properties
 
         self.next_index -= 1
-        arguments = self.create_append_entries_arguments()
-        return callback(*arguments)
+        previous_index, previous_term, entries = self.create_append_entries_arguments()
+        return callback(source, target, previous_index, previous_term, entries)
 
     def handle_leader_heartbeat(self, callback):
         """
         Leader heartbeat. Send AppendEntries to all followers.
         """
-        arguments = self.create_append_entries_arguments()
-        return callback(*arguments)
+        previous_index, previous_term, entries = self.create_append_entries_arguments()
+        return callback(previous_index, previous_term, entries)
+
+    def handle_message(self, message):
+        match message:
+            case raftmessage.AppendEntryRequest():
+                return self.handle_append_entries(**vars(message))
+
+            case _:
+                raise Exception("Exhaustive switch error.")
