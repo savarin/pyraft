@@ -34,7 +34,7 @@ class UpdateFollowers(Message):
     followers: List[int]
 
 
-def encode_message(message):
+def encode_message(message: Message) -> str:
     attributes = vars(message).copy()
 
     match message:
@@ -58,7 +58,7 @@ def encode_message(message):
     return rafthelpers.encode_item(attributes)
 
 
-def decode_message(string):
+def decode_message(string: str) -> Message:
     # TODO: Create enum for message type.
     attributes = rafthelpers.decode_item(string)
 

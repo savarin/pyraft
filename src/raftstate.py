@@ -2,13 +2,12 @@
 Layer around the core append_entries operation to keep state of the log and
 handle well-defined events.
 """
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 import dataclasses
 import enum
 
 import raftconfig
 import raftlog
-import raftnode
 import raftmessage
 
 

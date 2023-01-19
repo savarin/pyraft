@@ -20,9 +20,7 @@ class RaftServer:
 
     def send(self, messages: List[raftmessage.Message]) -> None:
         for message in messages:
-            self.node.send(
-                message.target, raftmessage.encode_message(message).encode("ascii")
-            )
+            self.node.send(message.target, raftmessage.encode_message(message))
 
     def respond(self) -> None:
         while True:
@@ -30,7 +28,10 @@ class RaftServer:
 
             try:
                 request = raftmessage.decode_message(payload)
-                print(f"\n{request.source} > {request.target} {payload}", end="")
+                print(
+                    f"\n{request.source} > {request.target} {payload}",
+                    end="",
+                )
 
                 if not isinstance(request, raftmessage.Text):
                     print(f"\n{request.target} > ", end="")

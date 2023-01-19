@@ -3,6 +3,7 @@ Network runtime that operates in the background, allowing servers to send and
 receive messages from each other. Minor changes to Dave's code. Wraps up a
 combination of threads, queues and sockets.
 """
+from typing import Dict, Optional, Tuple
 import dataclasses
 import os
 import queue
@@ -13,7 +14,7 @@ import threading
 import raftconfig
 
 
-def initialize_socket(identifier):
+def initialize_socket(identifier: int) -> socket.socket:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
 
@@ -43,18 +44,20 @@ class RaftNode:
 
     identifier: int
 
-    def __post_init__(self):
-        self.socket = initialize_socket(self.identifier)
-        self.incoming = queue.Queue()
-        self.outgoing = {i: queue.Queue() for i in raftconfig.ADDRESS_BY_IDENTIFIER}
+    def __post_init__(self) -> None:
+        self.socket: socket.socket = initialize_socket(self.identifier)
+        self.incoming: queue.Queue = queue.Queue()
+        self.outgoing: Dict[int, queue.Queue] = {
+            i: queue.Queue() for i in raftconfig.ADDRESS_BY_IDENTIFIER
+        }
 
-    def send(self, identifier, message):
-        self.outgoing[identifier].put(message)
+    def send(self, identifier: int, message: str) -> None:
+        self.outgoing[identifier].put(message.encode("ascii"))
 
-    def receive(self):
+    def receive(self) -> str:
         return self.incoming.get()
 
-    def _listen(self, client):
+    def _listen(self, client: socket.socket) -> None:
         try:
             while True:
                 length = int.from_bytes(client.recv(1), byteorder="big")
@@ -68,7 +71,7 @@ class RaftNode:
         except IOError:
             client.close()
 
-    def listen(self):
+    def listen(self) -> None:
         """
         Run in background thread to listen for incoming connections and places
         messages in incoming queue.
@@ -77,7 +80,9 @@ class RaftNode:
             client, address = self.socket.accept()
             threading.Thread(target=self._listen, args=(client,)).start()
 
-    def _deliver(self, sock, address, message):
+    def _deliver(
+        self, sock: Optional[socket.socket], address: Tuple[str, int], message: bytes
+    ) -> Optional[socket.socket]:
         try:
             if sock is None:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -92,7 +97,7 @@ class RaftNode:
 
         return sock
 
-    def deliver(self, identifier):
+    def deliver(self, identifier: int) -> None:
         """
         Run in background thread to deliver outgoing messages to other nodes.
         The delivery is best-effort attempt, in which the message is discarded
@@ -111,7 +116,7 @@ class RaftNode:
             print("panic!")
             os._exit(1)
 
-    def start(self):
+    def start(self) -> None:
         threading.Thread(target=self.listen, args=()).start()
 
         for i in raftconfig.ADDRESS_BY_IDENTIFIER:
@@ -120,7 +125,7 @@ class RaftNode:
         print("start.")
 
 
-def run(identifier):
+def run(identifier: int) -> None:
     node = RaftNode(identifier)
     node.start()
 
@@ -138,7 +143,7 @@ def run(identifier):
             break
 
         target, message = prompt.split(maxsplit=1)
-        node.send(int(target), message.encode("ascii"))
+        node.send(int(target), message)
 
     # Ensures all threads are handled.
     print("end.")
