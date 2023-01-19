@@ -40,6 +40,7 @@ def test_handle_append_entries_request(logs_by_identifier) -> None:
     response = follower_state.handle_append_entries_request(
         0, 1, 8, 6, [raftlog.LogEntry(6, "9")]
     )
+    assert isinstance(response, raftmessage.AppendEntryResponse)
     assert response.success
     assert response.properties["pre_length"] == 9
     assert response.properties["post_length"] == 10
@@ -47,6 +48,13 @@ def test_handle_append_entries_request(logs_by_identifier) -> None:
 
 
 def test_handle_append_entries_response(paper_log, init_callback) -> None:
+    """
+    Callback will substitute function return with follower response, hence
+    result will be AppendEntryResponse.
+
+    TODO: Replace callback with AppendEntryRequest followed by subsequent
+    response with AppendEntry.
+    """
     # Figure 7a
     leader_state = init_raft_state(paper_log, 6, raftstate.StateEnum.LEADER, 10)
     callback = init_callback("a", 6)
@@ -190,6 +198,7 @@ def test_handle_leader_heartbeat(logs_by_identifier) -> None:
     responses = leader_state.handle_leader_heartbeat(0, 0, [1])
     assert len(responses) == 1
 
+    assert isinstance(responses[0], raftmessage.AppendEntryRequest)
     assert responses[0].previous_index == 8
     assert responses[0].previous_term == 6
     assert len(responses[0].entries) == 0
