@@ -5,14 +5,19 @@ import rafthelpers
 import raftlog
 
 
+@dataclasses.dataclass
 class Message:
-    pass
+    source: int
+    target: int
+
+
+@dataclasses.dataclass
+class Text(Message):
+    text: str
 
 
 @dataclasses.dataclass
 class AppendEntryRequest(Message):
-    source: int
-    target: int
     previous_index: int
     previous_term: int
     entries: List[raftlog.LogEntry]
@@ -20,16 +25,12 @@ class AppendEntryRequest(Message):
 
 @dataclasses.dataclass
 class AppendEntryResponse(Message):
-    source: int
-    target: int
     success: bool
     properties: Dict[str, int]
 
 
 @dataclasses.dataclass
 class UpdateFollowers(Message):
-    source: int
-    target: int
     followers: List[int]
 
 
@@ -37,6 +38,9 @@ def encode_message(message):
     attributes = vars(message).copy()
 
     match message:
+        case Text():
+            pass
+
         case AppendEntryRequest():
             entries = []
 
@@ -44,17 +48,18 @@ def encode_message(message):
                 entries.append(vars(entry))
 
             attributes["entries"] = entries
-            return rafthelpers.encode_item(attributes)
 
         case AppendEntryResponse():
             attributes["success"] = int(attributes["success"])
-            return rafthelpers.encode_item(attributes)
 
         case UpdateFollowers():
-            return rafthelpers.encode_item(attributes)
+            pass
+
+    return rafthelpers.encode_item(attributes)
 
 
 def decode_message(string):
+    # TODO: Create enum for message type.
     attributes = rafthelpers.decode_item(string)
 
     if len(attributes) == 5:
@@ -70,8 +75,15 @@ def decode_message(string):
         attributes["success"] = bool(attributes["success"])
         return AppendEntryResponse(**attributes)
 
-    elif len(attributes) == 3:
+    elif len(attributes) == 3 and "followers" in attributes:
         return UpdateFollowers(**attributes)
+
+    elif len(attributes) == 3 and "text" in attributes:
+        return Text(**attributes)
+
+    raise Exception(
+        f"Exhaustive switch error in decoding message with attributes {attributes}."
+    )
 
 
 if __name__ == "__main__":

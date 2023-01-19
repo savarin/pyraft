@@ -30,7 +30,7 @@ def encode_item(element):
             return "d" + "".join([encode_item(item) for item in collection]) + "e"
 
         case _:
-            raise Exception("Exhaustive switch error.")
+            raise Exception(f"Exhaustive switch error in encoding item {element}.")
 
 
 def decode_item(string):
@@ -64,7 +64,7 @@ def decode_item(string):
             return {k: v for k, v in zip(elements[::2], elements[1::2])}, rest
 
         else:
-            raise DecodeError("Malformed string.")
+            raise DecodeError(f"Malformed string {string}.")
 
     return closure(string)[0]
 

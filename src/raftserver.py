@@ -20,15 +20,23 @@ class RaftServer:
     def pprint(self, string):
         print(f"{string}\n{self.identifier} > ", end="")
 
-    def receive(self):
+    def send(self, messages):
+        for message in messages:
+            self.node.send(
+                message.target, raftmessage.encode_message(message).encode("ascii")
+            )
+
+    def respond(self):
         while True:
             payload = self.node.receive()
             self.pprint(f"\n{self.identifier}: {payload}")
 
             try:
                 request = raftmessage.decode_message(payload)
-                print(self.state.handle_message(request))
-                self.pprint(self.state.log)
+                response = self.state.handle_message(request)
+
+                if response is not None:
+                    self.send(response)
 
             except rafthelpers.DecodeError:
                 pass
@@ -50,24 +58,19 @@ class RaftServer:
             target, command = int(prompt[0]), prompt[2:]
 
             if command == "replicate":
-                arguments = self.state.create_append_entries_arguments()
-                message = raftmessage.AppendEntryRequest(
-                    self.identifier,
-                    target,
-                    arguments[0],
-                    arguments[1],
-                    arguments[2],
-                )
-                self.node.send(
-                    target, raftmessage.encode_message(message).encode("ascii")
+                messages = self.state.handle_message(
+                    raftmessage.UpdateFollowers(0, 0, [1])
                 )
 
             else:
-                self.node.send(target, command.encode("ascii"))
+                messages = [raftmessage.Text(self.identifier, target, command)]
+
+            for message in messages:
+                self.send(message)
 
     def run(self):
         self.node.start()
-        threading.Thread(target=self.receive, args=()).start()
+        threading.Thread(target=self.respond, args=()).start()
 
         if self.identifier == 0:
             self.state.handle_client_log_append("a")
