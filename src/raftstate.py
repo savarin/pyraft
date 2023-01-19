@@ -98,7 +98,7 @@ class RaftState:
         return messages
 
     def handle_text(self, source, target, text):
-        print(text)
+        print(f"\n{source} > {target} {text}\n{target} > ", end="")
         return None
 
     def handle_message(self, message):
