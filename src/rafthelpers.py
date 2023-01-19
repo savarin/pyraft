@@ -67,7 +67,3 @@ def decode_item(string):
             raise DecodeError(f"Malformed string {string}.")
 
     return closure(string)[0]
-
-
-if __name__ == "__main__":
-    breakpoint()

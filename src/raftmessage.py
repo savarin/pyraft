@@ -84,11 +84,3 @@ def decode_message(string):
     raise Exception(
         f"Exhaustive switch error in decoding message with attributes {attributes}."
     )
-
-
-if __name__ == "__main__":
-    message = AppendEntryRequest(
-        1, 2, 3, 4, [raftlog.LogEntry(5, "a"), raftlog.LogEntry(6, "b")]
-    )
-    string = encode_message(message)
-    breakpoint()

@@ -65,9 +65,7 @@ class RaftState:
         """
         self.log.append(raftlog.LogEntry(self.current_term, item))
 
-    def handle_append_entries_response(
-        self, source, target, success, properties, callback=None
-    ):
+    def handle_append_entries_response(self, source, target, success, properties):
         """
         Follower response (received by leader).
         """
@@ -77,11 +75,6 @@ class RaftState:
 
         self.next_index -= 1
         previous_index, previous_term, entries = self.create_append_entries_arguments()
-
-        # TODO: Review replacement of callback with patching as currently only
-        # being used for testing.
-        if callback is not None:
-            return callback(source, target, previous_index, previous_term, entries)
 
         return [
             raftmessage.AppendEntryRequest(

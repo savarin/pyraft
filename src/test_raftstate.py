@@ -1,5 +1,3 @@
-import pytest
-
 import raftlog
 import raftmessage
 import raftstate
@@ -17,18 +15,13 @@ def init_raft_state(
     return raft_state
 
 
-@pytest.fixture
-def init_callback(logs_by_identifier):
-    def closure(identifier, current_term):
-        follower_state = init_raft_state(
-            logs_by_identifier[identifier],
-            current_term,
-            raftstate.StateEnum.FOLLOWER,
-            None,
-        )
-        return follower_state.handle_append_entries_request
+def init_raft_states(leader_log, follower_log):
+    leader_state = init_raft_state(leader_log, 6, raftstate.StateEnum.LEADER, 9)
+    follower_state = init_raft_state(
+        follower_log, 6, raftstate.StateEnum.FOLLOWER, None
+    )
 
-    return closure
+    return leader_state, follower_state
 
 
 def test_handle_append_entries_request(logs_by_identifier) -> None:
@@ -46,173 +39,34 @@ def test_handle_append_entries_request(logs_by_identifier) -> None:
     assert response.properties["post_length"] == 10
     assert response.properties["entries_length"] == 1
 
+    response = follower_state.handle_append_entries_request(
+        0, 1, 10, 6, [raftlog.LogEntry(6, "11")]
+    )[0]
+    assert isinstance(response, raftmessage.AppendEntryResponse)
+    assert not response.success
+    assert response.properties["pre_length"] == 10
+    assert response.properties["post_length"] == 10
+    assert response.properties["entries_length"] == 1
 
-def test_handle_append_entries_response(paper_log, init_callback) -> None:
-    """
-    Callback will substitute function return with follower response, hence
-    result will be AppendEntryResponse.
 
-    TODO: Replace callback with AppendEntryRequest followed by subsequent
-    response with AppendEntry.
-    """
+def test_handle_append_entries_response(logs_by_identifier) -> None:
     # Figure 7a
-    leader_state = init_raft_state(paper_log, 6, raftstate.StateEnum.LEADER, 10)
-    callback = init_callback("a", 6)
-
-    response = leader_state.handle_append_entries_response(1, 0, False, None, callback)[
-        0
-    ]
-    assert response.success
-    assert response.properties["pre_length"] == 9
-    assert response.properties["post_length"] == 10
-    assert response.properties["entries_length"] == 1
-    assert leader_state.next_index == 9
-
-    assert (
-        leader_state.handle_append_entries_response(
-            1, 0, response.success, response.properties, callback
-        )
-        is None
+    leader_state = init_raft_state(
+        logs_by_identifier["a"], 6, raftstate.StateEnum.LEADER, 9
     )
-    assert leader_state.next_index == 10
-
-    # Figure 7b
-    leader_state = init_raft_state(paper_log, 6, raftstate.StateEnum.LEADER, 10)
-    callback = init_callback("b", 6)
-    response = raftmessage.AppendEntryResponse(1, 0, False, {})
-
-    for i in range(5):
-        response = leader_state.handle_append_entries_response(
-            1, 0, response.success, response.properties, callback
-        )[0]
-        assert not response.success
-        assert response.properties["pre_length"] == 4
-        assert response.properties["post_length"] == 4
-        assert response.properties["entries_length"] == i + 1
-        assert leader_state.next_index == 9 - i
-
-    response = leader_state.handle_append_entries_response(1, 0, False, None, callback)[
-        0
-    ]
-    assert response.success
-    assert response.properties["pre_length"] == 4
-    assert response.properties["post_length"] == 10
-    assert response.properties["entries_length"] == 6
-    assert leader_state.next_index == 4
-
-    assert (
-        leader_state.handle_append_entries_response(
-            1, 0, response.success, response.properties, callback
-        )
-        is None
-    )
-    assert leader_state.next_index == 10
-
-    # Figure 7c
-    leader_state = init_raft_state(paper_log, 6, raftstate.StateEnum.LEADER, 10)
-    callback = init_callback("c", 6)
-
-    response = leader_state.handle_append_entries_response(1, 0, False, None, callback)[
-        0
-    ]
-    assert response.success
-    assert response.properties["pre_length"] == 11
-    assert response.properties["post_length"] == 11
-    assert response.properties["entries_length"] == 1
-    assert leader_state.next_index == 9
-
-    assert (
-        leader_state.handle_append_entries_response(
-            1, 0, response.success, response.properties, callback
-        )
-        is None
-    )
-    assert leader_state.next_index == 10
-
-    # Figure 7d
-    leader_state = init_raft_state(paper_log, 6, raftstate.StateEnum.LEADER, 10)
-    callback = init_callback("d", 6)
-
-    response = leader_state.handle_append_entries_response(1, 0, False, None, callback)[
-        0
-    ]
-    assert response.success
-    assert response.properties["pre_length"] == 12
-    assert response.properties["post_length"] == 12
-    assert response.properties["entries_length"] == 1
-    assert leader_state.next_index == 9
-
-    assert (
-        leader_state.handle_append_entries_response(
-            1, 0, response.success, response.properties, callback
-        )
-        is None
-    )
-    assert leader_state.next_index == 10
-
-    # Figure 7e
-    leader_state = init_raft_state(paper_log, 6, raftstate.StateEnum.LEADER, 10)
-    callback = init_callback("e", 6)
-    response = raftmessage.AppendEntryResponse(1, 0, False, {})
-
-    for i in range(4):
-        response = leader_state.handle_append_entries_response(
-            1, 0, response.success, response.properties, callback
-        )[0]
-        assert not response.success
-        assert response.properties["pre_length"] == 7
-        assert response.properties["post_length"] == 7
-        assert response.properties["entries_length"] == i + 1
-        assert leader_state.next_index == 9 - i
 
     response = leader_state.handle_append_entries_response(
-        1, 0, response.success, response.properties, callback
+        1, 0, False, {"pre_length": 9, "post_length": 9, "entries_length": 0}
     )[0]
-    assert response.success
-    assert response.properties["pre_length"] == 7
-    assert response.properties["post_length"] == 10
-    assert response.properties["entries_length"] == 5
-    assert leader_state.next_index == 5
-
-    assert (
-        leader_state.handle_append_entries_response(
-            1, 0, response.success, response.properties, callback
-        )
-        is None
-    )
-    assert leader_state.next_index == 10
-
-    # Figure 7f
-    leader_state = init_raft_state(paper_log, 6, raftstate.StateEnum.LEADER, 10)
-    callback = init_callback("f", 6)
-    response = raftmessage.AppendEntryResponse(1, 0, False, {})
-
-    for i in range(6):
-        response = leader_state.handle_append_entries_response(
-            1, 0, response.success, response.properties, callback
-        )[0]
-        assert not response.success
-        assert response.properties["pre_length"] == 11
-        assert response.properties["post_length"] == 11
-        assert response.properties["entries_length"] == i + 1
-        assert leader_state.next_index == 9 - i
+    assert isinstance(response, raftmessage.AppendEntryRequest)
+    assert response.previous_index == 7
+    assert response.previous_term == 6
+    assert response.entries == [raftlog.LogEntry(6, "8")]
 
     response = leader_state.handle_append_entries_response(
-        1, 0, response.success, response.properties, callback
-    )[0]
-    assert response.success
-    assert response.properties["pre_length"] == 11
-    assert response.properties["post_length"] == 10
-    assert response.properties["entries_length"] == 7
-    assert leader_state.next_index == 3
-
-    assert (
-        leader_state.handle_append_entries_response(
-            1, 0, response.success, response.properties, callback
-        )
-        is None
+        1, 0, True, {"pre_length": 9, "post_length": 9, "entries_length": 1}
     )
-    assert leader_state.next_index == 10
+    assert response is None
 
 
 def test_handle_leader_heartbeat(logs_by_identifier) -> None:
@@ -228,3 +82,135 @@ def test_handle_leader_heartbeat(logs_by_identifier) -> None:
     assert responses[0].previous_index == 8
     assert responses[0].previous_term == 6
     assert len(responses[0].entries) == 0
+
+
+def test_handle_message_a(paper_log, logs_by_identifier) -> None:
+    # Figure 7a
+    leader_state, follower_state = init_raft_states(paper_log, logs_by_identifier["a"])
+
+    request = leader_state.handle_message(raftmessage.UpdateFollowers(0, 0, [1]))[0]
+    response = follower_state.handle_message(request)[0]
+    assert response.success
+    assert response.properties["pre_length"] == 9
+    assert response.properties["post_length"] == 10
+    assert response.properties["entries_length"] == 1
+    assert leader_state.next_index == 9
+
+    assert leader_state.handle_message(response) is None
+    assert leader_state.next_index == 10
+
+
+def test_handle_message_b(paper_log, logs_by_identifier) -> None:
+    # Figure 7b
+    leader_state, follower_state = init_raft_states(paper_log, logs_by_identifier["b"])
+
+    request = leader_state.handle_message(raftmessage.UpdateFollowers(0, 0, [1]))[0]
+
+    for i in range(5):
+        response = follower_state.handle_message(request)[0]
+
+        assert not response.success
+        assert response.properties["pre_length"] == 4
+        assert response.properties["post_length"] == 4
+        assert response.properties["entries_length"] == i + 1
+        assert leader_state.next_index == 9 - i
+
+        request = leader_state.handle_message(response)[0]
+
+    response = follower_state.handle_message(request)[0]
+    assert response.success
+    assert response.properties["pre_length"] == 4
+    assert response.properties["post_length"] == 10
+    assert response.properties["entries_length"] == 6
+    assert leader_state.next_index == 4
+
+    assert leader_state.handle_message(response) is None
+    assert leader_state.next_index == 10
+
+
+def test_handle_message_c(paper_log, logs_by_identifier) -> None:
+    # Figure 7c
+    leader_state, follower_state = init_raft_states(paper_log, logs_by_identifier["c"])
+
+    request = leader_state.handle_message(raftmessage.UpdateFollowers(0, 0, [1]))[0]
+    response = follower_state.handle_message(request)[0]
+    assert response.success
+    assert response.properties["pre_length"] == 11
+    assert response.properties["post_length"] == 11
+    assert response.properties["entries_length"] == 1
+    assert leader_state.next_index == 9
+
+    assert leader_state.handle_message(response) is None
+    assert leader_state.next_index == 10
+
+
+def test_handle_message_d(paper_log, logs_by_identifier) -> None:
+    # Figure 7d
+    leader_state, follower_state = init_raft_states(paper_log, logs_by_identifier["d"])
+
+    request = leader_state.handle_message(raftmessage.UpdateFollowers(0, 0, [1]))[0]
+    response = follower_state.handle_message(request)[0]
+    assert response.success
+    assert response.properties["pre_length"] == 12
+    assert response.properties["post_length"] == 12
+    assert response.properties["entries_length"] == 1
+    assert leader_state.next_index == 9
+
+    assert leader_state.handle_message(response) is None
+    assert leader_state.next_index == 10
+
+
+def test_handle_message_e(paper_log, logs_by_identifier) -> None:
+    # Figure 7e
+    leader_state, follower_state = init_raft_states(paper_log, logs_by_identifier["e"])
+
+    request = leader_state.handle_message(raftmessage.UpdateFollowers(0, 0, [1]))[0]
+
+    for i in range(4):
+        response = follower_state.handle_message(request)[0]
+
+        assert not response.success
+        assert response.properties["pre_length"] == 7
+        assert response.properties["post_length"] == 7
+        assert response.properties["entries_length"] == i + 1
+        assert leader_state.next_index == 9 - i
+
+        request = leader_state.handle_message(response)[0]
+
+    response = follower_state.handle_message(request)[0]
+    assert response.success
+    assert response.properties["pre_length"] == 7
+    assert response.properties["post_length"] == 10
+    assert response.properties["entries_length"] == 5
+    assert leader_state.next_index == 5
+
+    assert leader_state.handle_message(response) is None
+    assert leader_state.next_index == 10
+
+
+def test_handle_message_f(paper_log, logs_by_identifier) -> None:
+    # Figure 7f
+    leader_state, follower_state = init_raft_states(paper_log, logs_by_identifier["f"])
+
+    request = leader_state.handle_message(raftmessage.UpdateFollowers(0, 0, [1]))[0]
+
+    for i in range(6):
+        response = follower_state.handle_message(request)[0]
+
+        assert not response.success
+        assert response.properties["pre_length"] == 11
+        assert response.properties["post_length"] == 11
+        assert response.properties["entries_length"] == i + 1
+        assert leader_state.next_index == 9 - i
+
+        request = leader_state.handle_message(response)[0]
+
+    response = follower_state.handle_message(request)[0]
+    assert response.success
+    assert response.properties["pre_length"] == 11
+    assert response.properties["post_length"] == 10
+    assert response.properties["entries_length"] == 7
+    assert leader_state.next_index == 3
+
+    assert leader_state.handle_message(response) is None
+    assert leader_state.next_index == 10
