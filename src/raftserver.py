@@ -14,7 +14,7 @@ import raftstate
 class RaftServer:
     identifier: int
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.state: raftstate.RaftState = raftstate.RaftState()
         self.node: raftnode.RaftNode = raftnode.RaftNode(self.identifier)
 
@@ -36,9 +36,7 @@ class RaftServer:
                     print(f"\n{request.target} > ", end="")
 
                 response = self.state.handle_message(request)
-
-                if response is not None:
-                    self.send(response)
+                self.send(response)
 
             except Exception as e:
                 print(f"Exception: {e}")
@@ -64,6 +62,7 @@ class RaftServer:
                 messages = self.state.handle_message(
                     raftmessage.UpdateFollowers(0, 0, followers)
                 )
+                assert messages is not None
 
                 for follower in followers:
                     messages.append(

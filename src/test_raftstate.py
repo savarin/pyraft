@@ -57,16 +57,17 @@ def test_handle_append_entries_response(logs_by_identifier) -> None:
 
     response = leader_state.handle_append_entries_response(
         1, 0, False, {"pre_length": 9, "post_length": 9, "entries_length": 0}
-    )[0]
-    assert isinstance(response, raftmessage.AppendEntryRequest)
-    assert response.previous_index == 7
-    assert response.previous_term == 6
-    assert response.entries == [raftlog.LogEntry(6, "8")]
+    )
+
+    assert isinstance(response[0], raftmessage.AppendEntryRequest)
+    assert response[0].previous_index == 7
+    assert response[0].previous_term == 6
+    assert response[0].entries == [raftlog.LogEntry(6, "8")]
 
     response = leader_state.handle_append_entries_response(
         1, 0, True, {"pre_length": 9, "post_length": 9, "entries_length": 1}
     )
-    assert response is None
+    assert len(response) == 0
 
 
 def test_handle_leader_heartbeat(logs_by_identifier) -> None:
@@ -75,13 +76,12 @@ def test_handle_leader_heartbeat(logs_by_identifier) -> None:
         logs_by_identifier["a"], 6, raftstate.StateEnum.LEADER, {1: 9}
     )
 
-    responses = leader_state.handle_leader_heartbeat(0, 0, [1])
-    assert len(responses) == 1
+    response = leader_state.handle_leader_heartbeat(0, 0, [1])[0]
 
-    assert isinstance(responses[0], raftmessage.AppendEntryRequest)
-    assert responses[0].previous_index == 8
-    assert responses[0].previous_term == 6
-    assert len(responses[0].entries) == 0
+    assert isinstance(response, raftmessage.AppendEntryRequest)
+    assert response.previous_index == 8
+    assert response.previous_term == 6
+    assert len(response.entries) == 0
 
 
 def test_handle_message_a(paper_log, logs_by_identifier) -> None:
@@ -96,7 +96,7 @@ def test_handle_message_a(paper_log, logs_by_identifier) -> None:
     assert response.properties["entries_length"] == 1
     assert leader_state.next_index == {1: 9}
 
-    assert leader_state.handle_message(response) is None
+    assert len(leader_state.handle_message(response)) == 0
     assert leader_state.next_index == {1: 10}
 
 
@@ -124,7 +124,7 @@ def test_handle_message_b(paper_log, logs_by_identifier) -> None:
     assert response.properties["entries_length"] == 6
     assert leader_state.next_index == {1: 4}
 
-    assert leader_state.handle_message(response) is None
+    assert len(leader_state.handle_message(response)) == 0
     assert leader_state.next_index == {1: 10}
 
 
@@ -140,7 +140,7 @@ def test_handle_message_c(paper_log, logs_by_identifier) -> None:
     assert response.properties["entries_length"] == 1
     assert leader_state.next_index == {1: 9}
 
-    assert leader_state.handle_message(response) is None
+    assert len(leader_state.handle_message(response)) == 0
     assert leader_state.next_index == {1: 10}
 
 
@@ -156,7 +156,7 @@ def test_handle_message_d(paper_log, logs_by_identifier) -> None:
     assert response.properties["entries_length"] == 1
     assert leader_state.next_index == {1: 9}
 
-    assert leader_state.handle_message(response) is None
+    assert len(leader_state.handle_message(response)) == 0
     assert leader_state.next_index == {1: 10}
 
 
@@ -184,7 +184,7 @@ def test_handle_message_e(paper_log, logs_by_identifier) -> None:
     assert response.properties["entries_length"] == 5
     assert leader_state.next_index == {1: 5}
 
-    assert leader_state.handle_message(response) is None
+    assert len(leader_state.handle_message(response)) == 0
     assert leader_state.next_index == {1: 10}
 
 
@@ -212,5 +212,5 @@ def test_handle_message_f(paper_log, logs_by_identifier) -> None:
     assert response.properties["entries_length"] == 7
     assert leader_state.next_index == {1: 3}
 
-    assert leader_state.handle_message(response) is None
+    assert len(leader_state.handle_message(response)) == 0
     assert leader_state.next_index == {1: 10}
