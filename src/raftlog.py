@@ -19,16 +19,16 @@ class LogEntry:
     term: int
     item: str
 
-    def __equals__(self, other):
+    def __equals__(self, other) -> bool:
         return self.term == other.term and self.item == other.item
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"LogEntry({self.term}, {self.item})"
 
 
 def append_entry(
     log: List[LogEntry], previous_index: int, previous_term: int, entry: LogEntry
-):
+) -> bool:
     """
     Helper to add entry one-by-one. Choose index starting from 0.
 
@@ -59,7 +59,7 @@ def append_entries(
     previous_index: int,
     previous_term: int,
     entries: List[LogEntry],
-):
+) -> bool:
     # Check index rewrite does not create gaps. If it does, return False.
     if previous_index >= len(log):
         return False
