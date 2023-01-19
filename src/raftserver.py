@@ -1,3 +1,4 @@
+from typing import List
 import dataclasses
 import os
 import sys
@@ -14,16 +15,16 @@ class RaftServer:
     identifier: int
 
     def __post_init__(self):
-        self.state = raftstate.RaftState()
-        self.node = raftnode.RaftNode(self.identifier)
+        self.state: raftstate.RaftState = raftstate.RaftState()
+        self.node: raftnode.RaftNode = raftnode.RaftNode(self.identifier)
 
-    def send(self, messages):
+    def send(self, messages: List[raftmessage.Message]) -> None:
         for message in messages:
             self.node.send(
                 message.target, raftmessage.encode_message(message).encode("ascii")
             )
 
-    def respond(self):
+    def respond(self) -> None:
         while True:
             payload = self.node.receive()
 
@@ -42,7 +43,7 @@ class RaftServer:
             except Exception as e:
                 print(f"Exception: {e}")
 
-    def instruct(self):
+    def instruct(self) -> None:
         while True:
             prompt = input(f"{self.identifier} > ")
 
