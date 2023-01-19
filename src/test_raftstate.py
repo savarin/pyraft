@@ -26,18 +26,18 @@ def init_callback(logs_by_identifier):
             raftstate.StateEnum.FOLLOWER,
             None,
         )
-        return follower_state.handle_append_entries
+        return follower_state.handle_append_entries_request
 
     return closure
 
 
-def test_handle_append_entries(logs_by_identifier) -> None:
+def test_handle_append_entries_request(logs_by_identifier) -> None:
     # Figure 7a
     follower_state = init_raft_state(
         logs_by_identifier["a"], 6, raftstate.StateEnum.FOLLOWER, None
     )
 
-    response = follower_state.handle_append_entries(
+    response = follower_state.handle_append_entries_request(
         0, 1, 8, 6, [raftlog.LogEntry(6, "9")]
     )
     assert response.success

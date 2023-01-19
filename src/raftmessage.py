@@ -27,18 +27,20 @@ class AppendEntryResponse(Message):
 
 
 def encode_message(message):
+    attributes = vars(message).copy()
+
     match message:
         case AppendEntryRequest():
-            result = vars(message).copy()
             entries = []
 
             for entry in message.entries:
                 entries.append(vars(entry))
 
-            result["entries"] = entries
-            return rafthelpers.encode_item(result)
+            attributes["entries"] = entries
+            return rafthelpers.encode_item(attributes)
 
         case AppendEntryResponse():
+            attributes["success"] = int(attributes["success"])
             return rafthelpers.encode_item(message)
 
 
@@ -55,6 +57,7 @@ def decode_message(string):
         return AppendEntryRequest(**attributes)
 
     elif len(attributes) == 4:
+        attributes["success"] = bool(attributes["success"])
         return AppendEntryResponse(**attributes)
 
 

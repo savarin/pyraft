@@ -34,7 +34,7 @@ class RaftState:
         previous_term = self.log[previous_index].term
         return previous_index, previous_term, self.log[self.next_index :]
 
-    def handle_append_entries(
+    def handle_append_entries_request(
         self,
         source: int,
         target: int,
@@ -65,13 +65,20 @@ class RaftState:
         """
         self.log.append(raftlog.LogEntry(self.current_term, item))
 
+    def callback_append_entries_response(
+        self, source, target, previous_index, previous_term, entries
+    ):
+        return raftmessage.AppendEntryRequest(
+            source, target, previous_index, previous_term, entries
+        )
+
     def handle_append_entries_response(
-        self, source, target, response, properties, callback
+        self, source, target, success, properties, callback
     ):
         """
         Follower response (received by leader).
         """
-        if response:
+        if success:
             self.next_index += properties["entries_length"]
             return True, properties
 
@@ -89,7 +96,13 @@ class RaftState:
     def handle_message(self, message):
         match message:
             case raftmessage.AppendEntryRequest():
-                return self.handle_append_entries(**vars(message))
+                return self.handle_append_entries_request(**vars(message))
+
+            case raftmessage.AppendEntryResponse():
+                attributes = vars(message)
+                attributes["callback"] = self.callback_append_entries_response
+
+                return self.handle_append_entries_response(**attributes)
 
             case _:
                 raise Exception("Exhaustive switch error.")
