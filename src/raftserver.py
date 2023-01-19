@@ -3,6 +3,7 @@ import os
 import sys
 import threading
 
+import raftconfig
 import raftmessage
 import raftnode
 import raftstate
@@ -56,7 +57,7 @@ class RaftServer:
                 self.state.handle_client_log_append("b")
                 self.state.handle_client_log_append("c")
 
-                followers = list(raftnode.ADDRESS_BY_IDENTIFIER.keys())
+                followers = list(raftconfig.ADDRESS_BY_IDENTIFIER.keys())
                 followers.remove(self.identifier)
 
                 messages = self.state.handle_message(

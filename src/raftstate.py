@@ -2,11 +2,13 @@
 Layer around the core append_entries operation to keep state of the log and
 handle well-defined events.
 """
-from typing import List
+from typing import Dict, List
 import dataclasses
 import enum
 
+import raftconfig
 import raftlog
+import raftnode
 import raftmessage
 
 
@@ -21,18 +23,20 @@ class RaftState:
         self.log: List[raftlog.LogEntry] = []
         self.current_term: int = 1
         self.current_state: StateEnum = StateEnum.FOLLOWER
-        self.next_index: int = 0
+        self.next_index: Dict[int, int] = {
+            identifier: 0 for identifier in raftconfig.ADDRESS_BY_IDENTIFIER
+        }
 
     def change_state(self, state_enum: StateEnum):
         self.current_state = state_enum
 
-    def create_append_entries_arguments(self):
-        if self.next_index == -1:
+    def create_append_entries_arguments(self, target):
+        if self.next_index[target] == -1:
             raise Exception("Invalid follower state.")
 
-        previous_index = self.next_index - 1
+        previous_index = self.next_index[target] - 1
         previous_term = self.log[previous_index].term
-        return previous_index, previous_term, self.log[self.next_index :]
+        return previous_index, previous_term, self.log[self.next_index[target] :]
 
     def handle_append_entries_request(
         self,
@@ -70,15 +74,13 @@ class RaftState:
         Follower response (received by leader).
         """
         if success:
-            self.next_index += properties["entries_length"]
+            self.next_index[source] += properties["entries_length"]
             return None
 
-        self.next_index -= 1
-        previous_index, previous_term, entries = self.create_append_entries_arguments()
-
+        self.next_index[source] -= 1
         return [
             raftmessage.AppendEntryRequest(
-                source, target, previous_index, previous_term, entries
+                target, source, *self.create_append_entries_arguments(source)
             )
         ]
 
@@ -86,12 +88,11 @@ class RaftState:
         """
         Leader heartbeat. Send AppendEntries to all followers.
         """
-        previous_index, previous_term, entries = self.create_append_entries_arguments()
         messages = []
 
         for follower in followers:
             message = raftmessage.AppendEntryRequest(
-                source, follower, previous_index, previous_term, entries
+                source, follower, *self.create_append_entries_arguments(follower)
             )
             messages.append(message)
 

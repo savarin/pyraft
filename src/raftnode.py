@@ -10,19 +10,14 @@ import socket
 import sys
 import threading
 
-
-ADDRESS_BY_IDENTIFIER = {
-    0: ("localhost", 7000),
-    1: ("localhost", 8000),
-    2: ("localhost", 9000),
-}
+import raftconfig
 
 
 def initialize_socket(identifier):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
 
-    sock.bind(ADDRESS_BY_IDENTIFIER[identifier])
+    sock.bind(raftconfig.ADDRESS_BY_IDENTIFIER[identifier])
     sock.listen()
     return sock
 
@@ -51,7 +46,7 @@ class RaftNode:
     def __post_init__(self):
         self.socket = initialize_socket(self.identifier)
         self.incoming = queue.Queue()
-        self.outgoing = {i: queue.Queue() for i in ADDRESS_BY_IDENTIFIER}
+        self.outgoing = {i: queue.Queue() for i in raftconfig.ADDRESS_BY_IDENTIFIER}
 
     def send(self, identifier, message):
         self.outgoing[identifier].put(message)
@@ -104,7 +99,7 @@ class RaftNode:
         if the remote server is not operational.
         """
         sock = None
-        address = ADDRESS_BY_IDENTIFIER[identifier]
+        address = raftconfig.ADDRESS_BY_IDENTIFIER[identifier]
 
         try:
             while True:
@@ -119,7 +114,7 @@ class RaftNode:
     def start(self):
         threading.Thread(target=self.listen, args=()).start()
 
-        for i in ADDRESS_BY_IDENTIFIER:
+        for i in raftconfig.ADDRESS_BY_IDENTIFIER:
             threading.Thread(target=self.deliver, args=(i,)).start()
 
         print("start.")
