@@ -65,15 +65,8 @@ class RaftState:
         """
         self.log.append(raftlog.LogEntry(self.current_term, item))
 
-    def callback_append_entries_response(
-        self, source, target, previous_index, previous_term, entries
-    ):
-        return raftmessage.AppendEntryRequest(
-            source, target, previous_index, previous_term, entries
-        )
-
     def handle_append_entries_response(
-        self, source, target, success, properties, callback
+        self, source, target, success, properties, callback=None
     ):
         """
         Follower response (received by leader).
@@ -84,14 +77,30 @@ class RaftState:
 
         self.next_index -= 1
         previous_index, previous_term, entries = self.create_append_entries_arguments()
-        return callback(source, target, previous_index, previous_term, entries)
 
-    def handle_leader_heartbeat(self, callback):
+        # TODO: Review replacement of callback with patching as currently only
+        # being used for testing.
+        if callback is not None:
+            return callback(source, target, previous_index, previous_term, entries)
+
+        return raftmessage.AppendEntryRequest(
+            source, target, previous_index, previous_term, entries
+        )
+
+    def handle_leader_heartbeat(self, source, target, followers):
         """
         Leader heartbeat. Send AppendEntries to all followers.
         """
         previous_index, previous_term, entries = self.create_append_entries_arguments()
-        return callback(previous_index, previous_term, entries)
+        messages = []
+
+        for follower in followers:
+            message = raftmessage.AppendEntryRequest(
+                source, follower, previous_index, previous_term, entries
+            )
+            messages.append(message)
+
+        return messages
 
     def handle_message(self, message):
         match message:
@@ -99,10 +108,10 @@ class RaftState:
                 return self.handle_append_entries_request(**vars(message))
 
             case raftmessage.AppendEntryResponse():
-                attributes = vars(message)
-                attributes["callback"] = self.callback_append_entries_response
+                return self.handle_append_entries_response(**vars(message))
 
-                return self.handle_append_entries_response(**attributes)
+            case raftmessage.UpdateFollowers():
+                return self.handle_leader_heartbeat(**vars(message))
 
             case _:
                 raise Exception("Exhaustive switch error.")

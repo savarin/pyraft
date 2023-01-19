@@ -26,6 +26,13 @@ class AppendEntryResponse(Message):
     properties: Dict[str, int]
 
 
+@dataclasses.dataclass
+class UpdateFollowers(Message):
+    source: int
+    target: int
+    followers: List[int]
+
+
 def encode_message(message):
     attributes = vars(message).copy()
 
@@ -41,7 +48,10 @@ def encode_message(message):
 
         case AppendEntryResponse():
             attributes["success"] = int(attributes["success"])
-            return rafthelpers.encode_item(message)
+            return rafthelpers.encode_item(attributes)
+
+        case UpdateFollowers():
+            return rafthelpers.encode_item(attributes)
 
 
 def decode_message(string):
@@ -59,6 +69,9 @@ def decode_message(string):
     elif len(attributes) == 4:
         attributes["success"] = bool(attributes["success"])
         return AppendEntryResponse(**attributes)
+
+    elif len(attributes) == 3:
+        return UpdateFollowers(**attributes)
 
 
 if __name__ == "__main__":

@@ -181,16 +181,15 @@ def test_handle_append_entries_response(paper_log, init_callback) -> None:
     assert leader_state.next_index == 10
 
 
-# TODO: Fix callback
-# def test_handle_leader_heartbeat(logs_by_identifier, init_callback) -> None:
-#     # Figure 7a
-#     leader_state = init_raft_state(
-#         logs_by_identifier["a"], 6, raftstate.StateEnum.LEADER, 9
-#     )
-#     callback = init_callback("a", 6)
+def test_handle_leader_heartbeat(logs_by_identifier) -> None:
+    # Figure 7a
+    leader_state = init_raft_state(
+        logs_by_identifier["a"], 6, raftstate.StateEnum.LEADER, 9
+    )
 
-#     response = leader_state.handle_leader_heartbeat(callback)
-#     assert response.success
-#     assert response.properties["pre_length"] == 9
-#     assert response.properties["post_length"] == 9
-#     assert response.properties["entries_length"] == 0
+    responses = leader_state.handle_leader_heartbeat(0, 0, [1])
+    assert len(responses) == 1
+
+    assert responses[0].previous_index == 8
+    assert responses[0].previous_term == 6
+    assert len(responses[0].entries) == 0
