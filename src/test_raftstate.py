@@ -34,6 +34,22 @@ def test_get_next_index(paper_log) -> None:
     assert leader_state.get_next_index(2) == 10
 
 
+def test_update_next_index(paper_log) -> None:
+    leader_state = init_raft_state(
+        paper_log, 6, raftstate.StateEnum.LEADER, {0: 10, 1: None, 2: None}
+    )
+
+    assert leader_state.next_index[1] is None
+
+    # Next index updates from None to previous_index + 1.
+    leader_state.update_next_index(1, 0, 9)
+    assert leader_state.next_index[1] == 10
+
+    # The argument for previous_index is ignored if current value is not None.
+    leader_state.update_next_index(1, 1, 1000)
+    assert leader_state.next_index[1] == 11
+
+
 def test_handle_append_entries_request(logs_by_identifier) -> None:
     # Figure 7a
     follower_state = init_raft_state(
