@@ -99,7 +99,7 @@ class RaftState:
         Client adds a log entry (received by leader).
         """
         if self.current_state != StateEnum.LEADER:
-            raise NotLeader
+            raise NotLeader("Require leader role for client log append.")
 
         self.log.append(raftlog.LogEntry(self.current_term, item))
         self.next_index[target] = len(self.log)
@@ -120,7 +120,7 @@ class RaftState:
         """
         # TODO: When exception raised, return message to leader.
         if self.current_state != StateEnum.FOLLOWER:
-            raise NotFollower
+            raise NotFollower("Require follower role for append entries request.")
 
         self.commit_index = commit_index
 
@@ -153,7 +153,7 @@ class RaftState:
         Follower response (received by leader).
         """
         if self.current_state != StateEnum.LEADER:
-            raise NotLeader
+            raise NotLeader("Require leader role for append entries response.")
 
         if success:
             self.update_next_index(source, entries_length, previous_index)
@@ -178,7 +178,7 @@ class RaftState:
         Leader heartbeat. Send AppendEntries to all followers.
         """
         if self.current_state != StateEnum.LEADER:
-            raise NotLeader
+            raise NotLeader("Require leader role for leader heartbeat.")
 
         messages: List[raftmessage.Message] = []
 
@@ -193,21 +193,26 @@ class RaftState:
     def handle_text(
         self, source: int, target: int, text: str
     ) -> List[raftmessage.Message]:
-        if text == "expose":
-            message = f"\n+ {str(self.commit_index)} {str(self.log)}\n{target} > "
+        # Simplify testing with custom commands passed by messages. Have ability
+        # to expose and modify state, but not send messages so update is not
+        # implemented.
+        if text.startswith("expose"):
+            message = f"\n+ {str(self.commit_index)} {str(self.log)}"
 
         elif text.startswith("append"):
             message = text.replace("append ", "")
 
-            for item in message.split():
-                self.handle_client_log_append(-1, -1, item)
+            try:
+                for item in message.split():
+                    self.handle_client_log_append(target, target, item)
 
-            message += f"\n{target} > "
+            except Exception as e:
+                message = f"\nException: {e}"
 
         else:
-            message = f"\n{source} > {target} {text}\n{target} > "
+            message = f"\n{source} > {target} {text}"
 
-        print(message, end="")
+        print(message + f"\n{target} > ", end="")
         return []
 
     def handle_message(self, message: raftmessage.Message) -> List[raftmessage.Message]:

@@ -51,46 +51,56 @@ class RaftServer:
             if not prompt:
                 return None
 
-            elif not (prompt[0].isdigit() and prompt[1] == " "):
-                try:
+            try:
+                # If identifier not specified, use as shell.
+                if not (prompt[0].isdigit() and prompt[1] == " "):
                     exec(f"print({prompt})")
+                    continue
 
-                except Exception as e:
-                    print(f"Exception: {e}")
+                target, command = int(prompt[0]), prompt[2:]
 
-                continue
+                # If identifier specified but not own identifier, send message to
+                # target.
+                if target != self.identifier:
+                    messages = [raftmessage.Text(self.identifier, target, command)]
+                    self.send(messages)
+                    continue
 
-            target, command = int(prompt[0]), prompt[2:]
+                # If identifier specified and is own identifier, act on own server.
+                # Here by exposing log.
+                if command.startswith("expose"):
+                    print(
+                        f"+ {str(self.state.commit_index)} {str(self.state.log)}\n",
+                        end="",
+                    )
 
-            # If target not own identifier, send message to target.
-            if target != self.identifier:
-                messages = [raftmessage.Text(self.identifier, target, command)]
-                self.send(messages)
-                continue
+                # Append entries to own log.
+                elif command.startswith("append"):
+                    for _ in range(len(self.state.log)):
+                        self.state.log.pop()
 
-            # Otherwise change own state.
-            if command.startswith("append"):
-                for _ in range(len(self.state.log)):
-                    self.state.log.pop()
+                    for item in command.replace("append ", "").split():
+                        self.state.handle_message(
+                            raftmessage.ClientLogAppend(
+                                self.identifier, self.identifier, item
+                            )
+                        )
 
-                for item in command.replace("append ", "").split():
-                    self.state.handle_message(
-                        raftmessage.ClientLogAppend(
-                            self.identifier, self.identifier, item
+                # Send out hearbeats to followers.
+                elif command.startswith("update"):
+                    followers = list(raftconfig.ADDRESS_BY_IDENTIFIER.keys())
+                    followers.remove(self.identifier)
+
+                    messages = self.state.handle_message(
+                        raftmessage.UpdateFollowers(
+                            self.identifier, self.identifier, followers
                         )
                     )
 
-            elif command == "update":
-                followers = list(raftconfig.ADDRESS_BY_IDENTIFIER.keys())
-                followers.remove(self.identifier)
+                    self.send(messages)
 
-                messages = self.state.handle_message(
-                    raftmessage.UpdateFollowers(
-                        self.identifier, self.identifier, followers
-                    )
-                )
-
-                self.send(messages)
+            except Exception as e:
+                print(f"Exception: {e}")
 
     def run(self):
         self.node.start()
