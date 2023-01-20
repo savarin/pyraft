@@ -8,6 +8,7 @@ import raftlog
 
 class MessageType(enum.Enum):
     TEXT = "TEXT"
+    CLIENT_LOG_APPEND = "CLIENT_LOG_APPEND"
     APPEND_REQUEST = "APPEND_REQUEST"
     APPEND_RESPONSE = "APPEND_RESPONSE"
     UPDATE_FOLLOWERS = "UPDATE_FOLLOWERS"
@@ -22,6 +23,11 @@ class Message:
 @dataclasses.dataclass
 class Text(Message):
     text: str
+
+
+@dataclasses.dataclass
+class ClientLogAppend(Message):
+    item: str
 
 
 @dataclasses.dataclass
@@ -52,6 +58,9 @@ def encode_message(message: Message) -> str:
         case Text():
             attributes["message_type"] = MessageType.TEXT.value
 
+        case ClientLogAppend():
+            attributes["message_type"] = MessageType.CLIENT_LOG_APPEND.value
+
         case AppendEntryRequest():
             entries = []
 
@@ -78,6 +87,9 @@ def decode_message(string: str) -> Message:
     del attributes["message_type"]
 
     match message_type:
+        case MessageType.CLIENT_LOG_APPEND:
+            return ClientLogAppend(**attributes)
+
         case MessageType.APPEND_REQUEST:
             entries = []
 

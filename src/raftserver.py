@@ -50,12 +50,15 @@ class RaftServer:
                 return None
 
             elif prompt == "test":
+                if self.identifier == 0:
+                    self.state.change_state(raftstate.StateEnum.LEADER)
+
                 for _ in range(len(self.state.log)):
                     self.state.log.pop()
 
-                self.state.handle_client_log_append(0, "a")
-                self.state.handle_client_log_append(0, "b")
-                self.state.handle_client_log_append(0, "c")
+                self.state.handle_client_log_append(0, 0, "a")
+                self.state.handle_client_log_append(0, 0, "b")
+                self.state.handle_client_log_append(0, 0, "c")
 
                 followers = list(raftconfig.ADDRESS_BY_IDENTIFIER.keys())
                 followers.remove(self.identifier)

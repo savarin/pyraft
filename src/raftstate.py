@@ -92,6 +92,20 @@ class RaftState:
             self.commit_index,
         )
 
+    def handle_client_log_append(
+        self, source: int, target: int, item: str
+    ) -> List[raftmessage.Message]:
+        """
+        Client adds a log entry (received by leader).
+        """
+        if self.current_state != StateEnum.LEADER:
+            raise NotLeader
+
+        self.log.append(raftlog.LogEntry(self.current_term, item))
+        self.next_index[target] = len(self.log)
+
+        return []
+
     def handle_append_entries_request(
         self,
         source: int,
@@ -125,16 +139,6 @@ class RaftState:
                 target, source, success, previous_index, len(entries), properties
             )
         ]
-
-    def handle_client_log_append(self, target: int, item: str) -> None:
-        """
-        Client adds a log entry (received by leader).
-        """
-        if self.current_state != StateEnum.LEADER:
-            raise NotLeader
-
-        self.log.append(raftlog.LogEntry(self.current_term, item))
-        self.next_index[target] = len(self.log)
 
     def handle_append_entries_response(
         self,
@@ -201,6 +205,9 @@ class RaftState:
     def handle_message(self, message: raftmessage.Message) -> List[raftmessage.Message]:
         # TODO: Ensure committed entries are not rewritten.
         match message:
+            case raftmessage.ClientLogAppend():
+                return self.handle_client_log_append(**vars(message))
+
             case raftmessage.AppendEntryRequest():
                 return self.handle_append_entries_request(**vars(message))
 
