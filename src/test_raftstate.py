@@ -349,3 +349,9 @@ def test_consensus(paper_log, logs_by_identifier) -> None:
     leader_state.handle_message(response_b)
     assert leader_state.commit_index == 9
     assert leader_state.next_index == {0: 10, 1: 10, 2: 10}
+
+    request = leader_state.handle_leader_heartbeat(0, 0, [1, 2])
+    follower_a_state.handle_message(request[0])[0]
+    follower_b_state.handle_message(request[1])[0]
+    assert follower_a_state.commit_index == 9
+    assert follower_b_state.commit_index == 9
