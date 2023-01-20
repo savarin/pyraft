@@ -11,6 +11,14 @@ import raftlog
 import raftmessage
 
 
+class NotLeader(Exception):
+    pass
+
+
+class NotFollower(Exception):
+    pass
+
+
 class StateEnum(enum.Enum):
     LEADER = "LEADER"
     FOLLOWER = "FOLLOWER"
@@ -57,6 +65,7 @@ class RaftState:
         majority_count = len(self.next_index) // 2 + 1
         null_count = len(self.next_index) - len(next_index_values)
 
+        # Require at least majority of next_index to be non-null.
         if len(next_index_values) < majority_count:
             return None
 
@@ -93,8 +102,12 @@ class RaftState:
         commit_index: int,
     ) -> List[raftmessage.Message]:
         """
-        Update to the log (received by a follower.
+        Update to the log (received by a follower).
         """
+        # TODO: When exception raised, return message to leader.
+        if self.current_state != StateEnum.FOLLOWER:
+            raise NotFollower
+
         self.commit_index = commit_index
 
         pre_length = len(self.log)
@@ -117,6 +130,9 @@ class RaftState:
         """
         Client adds a log entry (received by leader).
         """
+        if self.current_state != StateEnum.LEADER:
+            raise NotLeader
+
         self.log.append(raftlog.LogEntry(self.current_term, item))
         self.next_index[target] = len(self.log)
 
@@ -132,6 +148,9 @@ class RaftState:
         """
         Follower response (received by leader).
         """
+        if self.current_state != StateEnum.LEADER:
+            raise NotLeader
+
         if success:
             self.update_next_index(source, entries_length, previous_index)
             self.update_commit_index()
@@ -154,6 +173,9 @@ class RaftState:
         """
         Leader heartbeat. Send AppendEntries to all followers.
         """
+        if self.current_state != StateEnum.LEADER:
+            raise NotLeader
+
         messages: List[raftmessage.Message] = []
 
         for follower in followers:
@@ -177,6 +199,7 @@ class RaftState:
         return []
 
     def handle_message(self, message: raftmessage.Message) -> List[raftmessage.Message]:
+        # TODO: Ensure committed entries are not rewritten.
         match message:
             case raftmessage.AppendEntryRequest():
                 return self.handle_append_entries_request(**vars(message))
