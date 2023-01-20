@@ -1,8 +1,16 @@
 from typing import Dict, List
 import dataclasses
+import enum
 
 import rafthelpers
 import raftlog
+
+
+class MessageType(enum.Enum):
+    TEXT = "TEXT"
+    APPEND_REQUEST = "APPEND_REQUEST"
+    APPEND_RESPONSE = "APPEND_RESPONSE"
+    UPDATE_FOLLOWERS = "UPDATE_FOLLOWERS"
 
 
 @dataclasses.dataclass
@@ -42,7 +50,7 @@ def encode_message(message: Message) -> str:
 
     match message:
         case Text():
-            pass
+            attributes["message_type"] = MessageType.TEXT.value
 
         case AppendEntryRequest():
             entries = []
@@ -50,40 +58,46 @@ def encode_message(message: Message) -> str:
             for entry in message.entries:
                 entries.append(vars(entry))
 
+            attributes["message_type"] = MessageType.APPEND_REQUEST.value
             attributes["entries"] = entries
 
         case AppendEntryResponse():
+            attributes["message_type"] = MessageType.APPEND_RESPONSE.value
             attributes["success"] = int(attributes["success"])
 
         case UpdateFollowers():
-            pass
+            attributes["message_type"] = MessageType.UPDATE_FOLLOWERS.value
 
     return rafthelpers.encode_item(attributes)
 
 
 def decode_message(string: str) -> Message:
-    # TODO: Create enum for message type.
     attributes = rafthelpers.decode_item(string)
 
-    if len(attributes) == 6 and "entries" in attributes:
-        entries = []
+    message_type = MessageType(attributes["message_type"])
+    del attributes["message_type"]
 
-        for entry in attributes["entries"]:
-            entries.append(raftlog.LogEntry(**entry))
+    match message_type:
+        case MessageType.APPEND_REQUEST:
+            entries = []
 
-        attributes["entries"] = entries
-        return AppendEntryRequest(**attributes)
+            for entry in attributes["entries"]:
+                entries.append(raftlog.LogEntry(**entry))
 
-    elif len(attributes) == 6 and "success" in attributes:
-        attributes["success"] = bool(attributes["success"])
-        return AppendEntryResponse(**attributes)
+            attributes["entries"] = entries
+            return AppendEntryRequest(**attributes)
 
-    elif len(attributes) == 3 and "followers" in attributes:
-        return UpdateFollowers(**attributes)
+        case MessageType.APPEND_RESPONSE:
+            attributes["success"] = bool(attributes["success"])
+            return AppendEntryResponse(**attributes)
 
-    elif len(attributes) == 3 and "text" in attributes:
-        return Text(**attributes)
+        case MessageType.UPDATE_FOLLOWERS:
+            return UpdateFollowers(**attributes)
 
-    raise Exception(
-        f"Exhaustive switch error in decoding message with attributes {attributes}."
-    )
+        case MessageType.TEXT:
+            return Text(**attributes)
+
+        case _:
+            raise Exception(
+                f"Exhaustive switch error in decoding message with attributes {attributes}."
+            )

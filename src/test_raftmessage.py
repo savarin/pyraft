@@ -9,7 +9,8 @@ def test_message_translation():
 
     string = (
         "d12:commit_indexi-1e7:entriesld4:item1:a4:termi5eed4:item1:b4:termi6eee"
-        + "14:previous_indexi3e13:previous_termi4e6:sourcei1e6:targeti2ee"
+        + "12:message_type14:APPEND_REQUEST14:previous_indexi3e13:previous_termi4e"
+        + "6:sourcei1e6:targeti2ee"
     )
 
     assert raftmessage.encode_message(message) == string
