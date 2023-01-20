@@ -27,6 +27,8 @@ class AppendEntryRequest(Message):
 @dataclasses.dataclass
 class AppendEntryResponse(Message):
     success: bool
+    previous_index: int
+    entries_length: int
     properties: Dict[str, int]
 
 
@@ -63,7 +65,7 @@ def decode_message(string: str) -> Message:
     # TODO: Create enum for message type.
     attributes = rafthelpers.decode_item(string)
 
-    if len(attributes) == 6:
+    if len(attributes) == 6 and "entries" in attributes:
         entries = []
 
         for entry in attributes["entries"]:
@@ -72,7 +74,7 @@ def decode_message(string: str) -> Message:
         attributes["entries"] = entries
         return AppendEntryRequest(**attributes)
 
-    elif len(attributes) == 4:
+    elif len(attributes) == 6 and "success" in attributes:
         attributes["success"] = bool(attributes["success"])
         return AppendEntryResponse(**attributes)
 

@@ -2,7 +2,7 @@
 Layer around the core append_entries operation to keep state of the log and
 handle well-defined events.
 """
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 import dataclasses
 import enum
 
@@ -23,25 +23,63 @@ class RaftState:
         self.current_state: StateEnum = StateEnum.FOLLOWER
         self.current_term: int = -1
         self.commit_index: int = -1
-        self.next_index: Dict[int, int] = {
-            identifier: 0 for identifier in raftconfig.ADDRESS_BY_IDENTIFIER
+        self.next_index: Dict[int, Optional[int]] = {
+            identifier: None for identifier in raftconfig.ADDRESS_BY_IDENTIFIER
         }
 
     def change_state(self, state_enum: StateEnum) -> None:
         self.current_state = state_enum
 
-    def create_append_entries_arguments(
-        self, target: int
-    ) -> Tuple[int, int, List[raftlog.LogEntry], int]:
-        if self.next_index[target] <= -1:
-            raise Exception("Invalid follower state.")
+    def get_next_index(self, target: int) -> int:
+        next_index = self.next_index[target]
 
-        previous_index = self.next_index[target] - 1
+        if next_index is None:
+            return len(self.log)
+
+        assert next_index is not None
+        return next_index
+
+    def update_next_index(
+        self, target: int, entries_length: int, previous_index: int
+    ) -> None:
+        next_index = self.next_index[target]
+
+        if next_index is None:
+            self.next_index[target] = previous_index + 1 + entries_length
+
+        else:
+            self.next_index[target] = next_index + entries_length
+
+    def update_commit_index(self) -> None:
+        next_index_values = sorted(
+            [item for item in self.next_index.values() if item is not None]
+        )
+        majority_count = len(self.next_index) // 2 + 1
+        null_count = len(self.next_index) - len(next_index_values)
+
+        if len(next_index_values) < majority_count:
+            return None
+
+        self.commit_index = next_index_values[majority_count - 1 - null_count] - 1
+
+    def create_append_entries_arguments(
+        self,
+        target: int,
+        previous_index: Optional[int],
+    ) -> Tuple[int, int, List[raftlog.LogEntry], int]:
+        if previous_index is None:
+            next_index = self.get_next_index(target)
+            previous_index = next_index - 1
+
+        else:
+            next_index = previous_index + 1
+
         previous_term = self.log[previous_index].term
+
         return (
             previous_index,
             previous_term,
-            self.log[self.next_index[target] :],
+            self.log[next_index:],
             self.commit_index,
         )
 
@@ -67,10 +105,13 @@ class RaftState:
         properties = {
             "pre_length": pre_length,
             "post_length": len(self.log),
-            "entries_length": len(entries),
         }
 
-        return [raftmessage.AppendEntryResponse(target, source, success, properties)]
+        return [
+            raftmessage.AppendEntryResponse(
+                target, source, success, previous_index, len(entries), properties
+            )
+        ]
 
     def handle_client_log_append(self, target: int, item: str) -> None:
         """
@@ -80,22 +121,30 @@ class RaftState:
         self.next_index[target] = len(self.log)
 
     def handle_append_entries_response(
-        self, source: int, target: int, success: bool, properties: Dict[str, int]
+        self,
+        source: int,
+        target: int,
+        success: bool,
+        previous_index: int,
+        entries_length: int,
+        properties: Dict[str, int],
     ) -> List[raftmessage.Message]:
         """
         Follower response (received by leader).
         """
         if success:
-            self.next_index[source] += properties["entries_length"]
-            self.commit_index = (
-                sorted(self.next_index.values())[len(self.next_index) // 2] - 1
-            )
+            self.update_next_index(source, entries_length, previous_index)
+            self.update_commit_index()
             return []
 
-        self.next_index[source] -= 1
+        previous_index -= 1
+        _, previous_term, entries, commit_index = self.create_append_entries_arguments(
+            source, previous_index
+        )
+
         return [
             raftmessage.AppendEntryRequest(
-                target, source, *self.create_append_entries_arguments(source)
+                target, source, previous_index, previous_term, entries, commit_index
             )
         ]
 
@@ -109,7 +158,7 @@ class RaftState:
 
         for follower in followers:
             message = raftmessage.AppendEntryRequest(
-                source, follower, *self.create_append_entries_arguments(follower)
+                source, follower, *self.create_append_entries_arguments(follower, None)
             )
             messages.append(message)
 
