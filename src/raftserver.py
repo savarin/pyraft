@@ -53,9 +53,9 @@ class RaftServer:
                 for _ in range(len(self.state.log)):
                     self.state.log.pop()
 
-                self.state.handle_client_log_append("a")
-                self.state.handle_client_log_append("b")
-                self.state.handle_client_log_append("c")
+                self.state.handle_client_log_append(0, "a")
+                self.state.handle_client_log_append(0, "b")
+                self.state.handle_client_log_append(0, "c")
 
                 followers = list(raftconfig.ADDRESS_BY_IDENTIFIER.keys())
                 followers.remove(self.identifier)

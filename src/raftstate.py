@@ -20,8 +20,9 @@ class StateEnum(enum.Enum):
 class RaftState:
     def __post_init__(self) -> None:
         self.log: List[raftlog.LogEntry] = []
-        self.current_term: int = 1
         self.current_state: StateEnum = StateEnum.FOLLOWER
+        self.current_term: int = -1
+        self.commit_index: int = -1
         self.next_index: Dict[int, int] = {
             identifier: 0 for identifier in raftconfig.ADDRESS_BY_IDENTIFIER
         }
@@ -31,13 +32,18 @@ class RaftState:
 
     def create_append_entries_arguments(
         self, target: int
-    ) -> Tuple[int, int, List[raftlog.LogEntry]]:
-        if self.next_index[target] == -1:
+    ) -> Tuple[int, int, List[raftlog.LogEntry], int]:
+        if self.next_index[target] <= -1:
             raise Exception("Invalid follower state.")
 
         previous_index = self.next_index[target] - 1
         previous_term = self.log[previous_index].term
-        return previous_index, previous_term, self.log[self.next_index[target] :]
+        return (
+            previous_index,
+            previous_term,
+            self.log[self.next_index[target] :],
+            self.commit_index,
+        )
 
     def handle_append_entries_request(
         self,
@@ -46,10 +52,12 @@ class RaftState:
         previous_index: int,
         previous_term: int,
         entries: List[raftlog.LogEntry],
+        commit_index: int,
     ) -> List[raftmessage.Message]:
         """
         Update to the log (received by a follower.
         """
+        self.commit_index = commit_index
 
         pre_length = len(self.log)
         success = raftlog.append_entries(
@@ -64,11 +72,12 @@ class RaftState:
 
         return [raftmessage.AppendEntryResponse(target, source, success, properties)]
 
-    def handle_client_log_append(self, item: str) -> None:
+    def handle_client_log_append(self, target: int, item: str) -> None:
         """
         Client adds a log entry (received by leader).
         """
         self.log.append(raftlog.LogEntry(self.current_term, item))
+        self.next_index[target] = len(self.log)
 
     def handle_append_entries_response(
         self, source: int, target: int, success: bool, properties: Dict[str, int]
@@ -78,6 +87,9 @@ class RaftState:
         """
         if success:
             self.next_index[source] += properties["entries_length"]
+            self.commit_index = (
+                sorted(self.next_index.values())[len(self.next_index) // 2] - 1
+            )
             return []
 
         self.next_index[source] -= 1
@@ -107,11 +119,12 @@ class RaftState:
         self, source: int, target: int, text: str
     ) -> List[raftmessage.Message]:
         if text == "expose":
-            print(f"\n+ {str(self.log)}\n{target} > ", end="")
+            message = f"\n+ {str(self.commit_index)} {str(self.log)}\n{target} > "
 
         else:
-            print(f"\n{source} > {target} {text}\n{target} > ", end="")
+            message = f"\n{source} > {target} {text}\n{target} > "
 
+        print(message, end="")
         return []
 
     def handle_message(self, message: raftmessage.Message) -> List[raftmessage.Message]:

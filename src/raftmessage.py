@@ -21,6 +21,7 @@ class AppendEntryRequest(Message):
     previous_index: int
     previous_term: int
     entries: List[raftlog.LogEntry]
+    commit_index: int
 
 
 @dataclasses.dataclass
@@ -62,7 +63,7 @@ def decode_message(string: str) -> Message:
     # TODO: Create enum for message type.
     attributes = rafthelpers.decode_item(string)
 
-    if len(attributes) == 5:
+    if len(attributes) == 6:
         entries = []
 
         for entry in attributes["entries"]:
