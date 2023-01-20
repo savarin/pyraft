@@ -17,11 +17,21 @@ def init_raft_state(
 
 def init_raft_states(leader_log, follower_log):
     leader_state = init_raft_state(
-        leader_log, 6, raftstate.StateEnum.LEADER, {0: 9, 1: None, 2: None}
+        leader_log, 6, raftstate.StateEnum.LEADER, {0: 10, 1: None, 2: None}
     )
     follower_state = init_raft_state(follower_log, 6, raftstate.StateEnum.FOLLOWER, {})
 
     return leader_state, follower_state
+
+
+def test_get_next_index(paper_log) -> None:
+    leader_state = init_raft_state(
+        paper_log, 6, raftstate.StateEnum.LEADER, {0: 10, 1: None, 2: None}
+    )
+
+    assert leader_state.get_next_index(0) == 10
+    assert leader_state.get_next_index(1) == 10
+    assert leader_state.get_next_index(2) == 10
 
 
 def test_handle_append_entries_request(logs_by_identifier) -> None:
@@ -49,20 +59,20 @@ def test_handle_append_entries_request(logs_by_identifier) -> None:
     assert response.properties["post_length"] == 10
 
 
-def test_handle_append_entries_response(logs_by_identifier) -> None:
-    # Figure 7a
+def test_handle_append_entries_response(paper_log) -> None:
+    # Figure 7
     leader_state = init_raft_state(
-        logs_by_identifier["a"], 6, raftstate.StateEnum.LEADER, {0: 9, 1: 9, 2: 9}
+        paper_log, 6, raftstate.StateEnum.LEADER, {0: 10, 1: None, 2: None}
     )
 
     response = leader_state.handle_append_entries_response(
-        1, 0, False, 8, 0, {"pre_length": 9, "post_length": 9}
+        1, 0, False, 9, 0, {"pre_length": 9, "post_length": 9}
     )
 
     assert isinstance(response[0], raftmessage.AppendEntryRequest)
-    assert response[0].previous_index == 7
+    assert response[0].previous_index == 8
     assert response[0].previous_term == 6
-    assert response[0].entries == [raftlog.LogEntry(6, "8")]
+    assert response[0].entries == [raftlog.LogEntry(6, "9")]
 
     response = leader_state.handle_append_entries_response(
         1, 0, True, 7, 1, {"pre_length": 9, "post_length": 9}
@@ -70,16 +80,16 @@ def test_handle_append_entries_response(logs_by_identifier) -> None:
     assert len(response) == 0
 
 
-def test_handle_leader_heartbeat(logs_by_identifier) -> None:
-    # Figure 7a
+def test_handle_leader_heartbeat(paper_log) -> None:
+    # Figure 7
     leader_state = init_raft_state(
-        logs_by_identifier["a"], 6, raftstate.StateEnum.LEADER, {0: 9, 1: 9, 2: 9}
+        paper_log, 6, raftstate.StateEnum.LEADER, {0: 10, 1: None, 2: None}
     )
 
     response = leader_state.handle_leader_heartbeat(0, 0, [1])[0]
 
     assert isinstance(response, raftmessage.AppendEntryRequest)
-    assert response.previous_index == 8
+    assert response.previous_index == 9
     assert response.previous_term == 6
     assert len(response.entries) == 0
 
