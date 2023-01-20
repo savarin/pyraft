@@ -23,7 +23,7 @@ class LogEntry:
         return self.term == other.term and self.item == other.item
 
     def __repr__(self) -> str:
-        return f"LogEntry({self.term}, {self.item})"
+        return f"LogEntry({str(self.term)}, '{self.item}')"
 
 
 def append_entry(

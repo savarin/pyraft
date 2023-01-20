@@ -68,6 +68,36 @@ def test_update_commit_index(paper_log) -> None:
     assert leader_state.commit_index == 9
 
 
+def test_create_append_entries_arguments(paper_log) -> None:
+    leader_state = init_raft_state(
+        paper_log, 6, raftstate.StateEnum.LEADER, {0: 10, 1: None, 2: None}
+    )
+
+    (
+        previous_index,
+        previous_term,
+        entries,
+        commit_index,
+    ) = leader_state.create_append_entries_arguments(1, None)
+
+    assert previous_index == 9
+    assert previous_term == 6
+    assert entries == []
+    assert commit_index == -1
+
+    (
+        previous_index,
+        previous_term,
+        entries,
+        commit_index,
+    ) = leader_state.create_append_entries_arguments(1, 8)
+
+    assert previous_index == 8
+    assert previous_term == 6
+    assert entries == [raftlog.LogEntry(6, "9")]
+    assert commit_index == -1
+
+
 def test_handle_append_entries_request(logs_by_identifier) -> None:
     # Figure 7a
     follower_state = init_raft_state(
