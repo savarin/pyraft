@@ -43,53 +43,61 @@ class RaftServer:
                 print(f"Exception: {e}")
 
     def instruct(self) -> None:
+        messages: List[raftmessage.Message] = []
+
         while True:
             prompt = input(f"{self.identifier} > ")
 
             if not prompt:
                 return None
 
-            elif prompt == "test":
-                if self.identifier == 0:
-                    self.state.change_state(raftstate.StateEnum.LEADER)
-
-                for _ in range(len(self.state.log)):
-                    self.state.log.pop()
-
-                self.state.handle_client_log_append(0, 0, "a")
-                self.state.handle_client_log_append(0, 0, "b")
-                self.state.handle_client_log_append(0, 0, "c")
-
-                followers = list(raftconfig.ADDRESS_BY_IDENTIFIER.keys())
-                followers.remove(self.identifier)
-
-                messages = self.state.handle_message(
-                    raftmessage.UpdateFollowers(0, 0, followers)
-                )
-                assert messages is not None
-
-                for follower in followers:
-                    messages.append(
-                        raftmessage.Text(self.identifier, follower, "expose")
-                    )
-
-                self.send(messages)
-
-            elif prompt[0].isdigit() and prompt[1] == " ":
-                target, command = int(prompt[0]), prompt[2:]
-                messages = [raftmessage.Text(self.identifier, target, command)]
-                self.send(messages)
-
-            else:
+            elif not (prompt[0].isdigit() and prompt[1] == " "):
                 try:
                     exec(f"print({prompt})")
 
                 except Exception as e:
                     print(f"Exception: {e}")
 
+                continue
+
+            target, command = int(prompt[0]), prompt[2:]
+
+            # If target not own identifier, send message to target.
+            if target != self.identifier:
+                messages = [raftmessage.Text(self.identifier, target, command)]
+                self.send(messages)
+                continue
+
+            # Otherwise change own state.
+            if command.startswith("append"):
+                for _ in range(len(self.state.log)):
+                    self.state.log.pop()
+
+                for item in command.replace("append ", "").split():
+                    self.state.handle_message(
+                        raftmessage.ClientLogAppend(
+                            self.identifier, self.identifier, item
+                        )
+                    )
+
+            elif command == "update":
+                followers = list(raftconfig.ADDRESS_BY_IDENTIFIER.keys())
+                followers.remove(self.identifier)
+
+                messages = self.state.handle_message(
+                    raftmessage.UpdateFollowers(
+                        self.identifier, self.identifier, followers
+                    )
+                )
+
+                self.send(messages)
+
     def run(self):
         self.node.start()
         threading.Thread(target=self.respond, args=()).start()
+
+        if self.identifier == 0:
+            self.state.change_state(raftstate.StateEnum.LEADER)
 
         self.instruct()
 

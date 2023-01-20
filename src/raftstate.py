@@ -196,6 +196,14 @@ class RaftState:
         if text == "expose":
             message = f"\n+ {str(self.commit_index)} {str(self.log)}\n{target} > "
 
+        elif text.startswith("append"):
+            message = text.replace("append ", "")
+
+            for item in message.split():
+                self.handle_client_log_append(-1, -1, item)
+
+            message += f"\n{target} > "
+
         else:
             message = f"\n{source} > {target} {text}\n{target} > "
 
