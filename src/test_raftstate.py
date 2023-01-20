@@ -50,6 +50,24 @@ def test_update_next_index(paper_log) -> None:
     assert leader_state.next_index[1] == 11
 
 
+def test_update_commit_index(paper_log) -> None:
+    leader_state = init_raft_state(
+        paper_log, 6, raftstate.StateEnum.LEADER, {0: 10, 1: None, 2: None}
+    )
+    assert leader_state.commit_index == -1
+
+    leader_state.update_commit_index()
+    assert leader_state.commit_index == -1
+
+    leader_state.next_index = {0: 10, 1: 1, 2: None}
+    leader_state.update_commit_index()
+    assert leader_state.commit_index == 0
+
+    leader_state.next_index = {0: 10, 1: 10, 2: None}
+    leader_state.update_commit_index()
+    assert leader_state.commit_index == 9
+
+
 def test_handle_append_entries_request(logs_by_identifier) -> None:
     # Figure 7a
     follower_state = init_raft_state(
