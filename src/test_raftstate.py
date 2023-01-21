@@ -1,3 +1,5 @@
+from typing import Dict, List, Optional
+
 import raftlog
 import raftmessage
 import raftstate
@@ -5,28 +7,33 @@ from test_raftlog import paper_log, logs_by_identifier
 
 
 def init_raft_state(
-    log, current_term, current_state, next_index
+    log: List[raftlog.LogEntry],
+    role: raftstate.Role,
+    current_term: int,
+    next_index: Dict[int, Optional[int]],
 ) -> raftstate.RaftState:
     raft_state = raftstate.RaftState()
     raft_state.log = log
+    raft_state.role = role
     raft_state.current_term = current_term
-    raft_state.current_state = current_state
     raft_state.next_index = next_index
     return raft_state
 
 
-def init_raft_states(leader_log, follower_log):
+def init_raft_states(
+    leader_log: List[raftlog.LogEntry], follower_log: List[raftlog.LogEntry]
+):
     leader_state = init_raft_state(
-        leader_log, 6, raftstate.StateEnum.LEADER, {0: 10, 1: None, 2: None}
+        leader_log, raftstate.Role.LEADER, 6, {0: 10, 1: None, 2: None}
     )
-    follower_state = init_raft_state(follower_log, 6, raftstate.StateEnum.FOLLOWER, {})
+    follower_state = init_raft_state(follower_log, raftstate.Role.FOLLOWER, 6, {})
 
     return leader_state, follower_state
 
 
-def test_get_next_index(paper_log) -> None:
+def test_get_next_index(paper_log: List[raftlog.LogEntry]) -> None:
     leader_state = init_raft_state(
-        paper_log, 6, raftstate.StateEnum.LEADER, {0: 10, 1: None, 2: None}
+        paper_log, raftstate.Role.LEADER, 6, {0: 10, 1: None, 2: None}
     )
 
     assert leader_state.get_next_index(0) == 10
@@ -34,9 +41,9 @@ def test_get_next_index(paper_log) -> None:
     assert leader_state.get_next_index(2) == 10
 
 
-def test_update_next_index(paper_log) -> None:
+def test_update_next_index(paper_log: List[raftlog.LogEntry]) -> None:
     leader_state = init_raft_state(
-        paper_log, 6, raftstate.StateEnum.LEADER, {0: 10, 1: None, 2: None}
+        paper_log, raftstate.Role.LEADER, 6, {0: 10, 1: None, 2: None}
     )
 
     assert leader_state.next_index[1] is None
@@ -50,9 +57,9 @@ def test_update_next_index(paper_log) -> None:
     assert leader_state.next_index[1] == 11
 
 
-def test_update_commit_index(paper_log) -> None:
+def test_update_commit_index(paper_log: List[raftlog.LogEntry]) -> None:
     leader_state = init_raft_state(
-        paper_log, 6, raftstate.StateEnum.LEADER, {0: 10, 1: None, 2: None}
+        paper_log, raftstate.Role.LEADER, 6, {0: 10, 1: None, 2: None}
     )
     assert leader_state.commit_index == -1
 
@@ -68,9 +75,9 @@ def test_update_commit_index(paper_log) -> None:
     assert leader_state.commit_index == 9
 
 
-def test_create_append_entries_arguments(paper_log) -> None:
+def test_create_append_entries_arguments(paper_log: List[raftlog.LogEntry]) -> None:
     leader_state = init_raft_state(
-        paper_log, 6, raftstate.StateEnum.LEADER, {0: 10, 1: None, 2: None}
+        paper_log, raftstate.Role.LEADER, 6, {0: 10, 1: None, 2: None}
     )
 
     (
@@ -98,10 +105,12 @@ def test_create_append_entries_arguments(paper_log) -> None:
     assert commit_index == -1
 
 
-def test_handle_append_entries_request(logs_by_identifier) -> None:
+def test_handle_append_entries_request(
+    logs_by_identifier: Dict[str, List[raftlog.LogEntry]]
+) -> None:
     # Figure 7a
     follower_state = init_raft_state(
-        logs_by_identifier["a"], 6, raftstate.StateEnum.FOLLOWER, {}
+        logs_by_identifier["a"], raftstate.Role.FOLLOWER, 6, {}
     )
 
     response = follower_state.handle_append_entries_request(
@@ -123,10 +132,10 @@ def test_handle_append_entries_request(logs_by_identifier) -> None:
     assert response.properties["post_length"] == 10
 
 
-def test_handle_append_entries_response(paper_log) -> None:
+def test_handle_append_entries_response(paper_log: List[raftlog.LogEntry]) -> None:
     # Figure 7
     leader_state = init_raft_state(
-        paper_log, 6, raftstate.StateEnum.LEADER, {0: 10, 1: None, 2: None}
+        paper_log, raftstate.Role.LEADER, 6, {0: 10, 1: None, 2: None}
     )
 
     response = leader_state.handle_append_entries_response(
@@ -144,10 +153,10 @@ def test_handle_append_entries_response(paper_log) -> None:
     assert len(response) == 0
 
 
-def test_handle_leader_heartbeat(paper_log) -> None:
+def test_handle_leader_heartbeat(paper_log: List[raftlog.LogEntry]) -> None:
     # Figure 7
     leader_state = init_raft_state(
-        paper_log, 6, raftstate.StateEnum.LEADER, {0: 10, 1: None, 2: None}
+        paper_log, raftstate.Role.LEADER, 6, {0: 10, 1: None, 2: None}
     )
 
     response = leader_state.handle_leader_heartbeat(0, 0, [1])[0]
@@ -158,7 +167,10 @@ def test_handle_leader_heartbeat(paper_log) -> None:
     assert len(response.entries) == 0
 
 
-def test_handle_message_a(paper_log, logs_by_identifier) -> None:
+def test_handle_message_a(
+    paper_log: List[raftlog.LogEntry],
+    logs_by_identifier: Dict[str, List[raftlog.LogEntry]],
+) -> None:
     # Figure 7a
     leader_state, follower_state = init_raft_states(paper_log, logs_by_identifier["a"])
 
@@ -186,7 +198,10 @@ def test_handle_message_a(paper_log, logs_by_identifier) -> None:
     assert leader_state.next_index[1] == 10
 
 
-def test_handle_message_b(paper_log, logs_by_identifier) -> None:
+def test_handle_message_b(
+    paper_log: List[raftlog.LogEntry],
+    logs_by_identifier: Dict[str, List[raftlog.LogEntry]],
+) -> None:
     # Figure 7b
     leader_state, follower_state = init_raft_states(paper_log, logs_by_identifier["b"])
 
@@ -215,7 +230,10 @@ def test_handle_message_b(paper_log, logs_by_identifier) -> None:
     assert leader_state.next_index[1] == 10
 
 
-def test_handle_message_c(paper_log, logs_by_identifier) -> None:
+def test_handle_message_c(
+    paper_log: List[raftlog.LogEntry],
+    logs_by_identifier: Dict[str, List[raftlog.LogEntry]],
+) -> None:
     # Figure 7c
     leader_state, follower_state = init_raft_states(paper_log, logs_by_identifier["c"])
 
@@ -233,7 +251,10 @@ def test_handle_message_c(paper_log, logs_by_identifier) -> None:
     assert leader_state.next_index[1] == 10
 
 
-def test_handle_message_d(paper_log, logs_by_identifier) -> None:
+def test_handle_message_d(
+    paper_log: List[raftlog.LogEntry],
+    logs_by_identifier: Dict[str, List[raftlog.LogEntry]],
+) -> None:
     # Figure 7d
     leader_state, follower_state = init_raft_states(paper_log, logs_by_identifier["d"])
 
@@ -251,7 +272,10 @@ def test_handle_message_d(paper_log, logs_by_identifier) -> None:
     assert leader_state.next_index[1] == 10
 
 
-def test_handle_message_e(paper_log, logs_by_identifier) -> None:
+def test_handle_message_e(
+    paper_log: List[raftlog.LogEntry],
+    logs_by_identifier: Dict[str, List[raftlog.LogEntry]],
+) -> None:
     # Figure 7e
     leader_state, follower_state = init_raft_states(paper_log, logs_by_identifier["e"])
 
@@ -281,7 +305,10 @@ def test_handle_message_e(paper_log, logs_by_identifier) -> None:
     assert leader_state.next_index[1] == 10
 
 
-def test_handle_message_f(paper_log, logs_by_identifier) -> None:
+def test_handle_message_f(
+    paper_log: List[raftlog.LogEntry],
+    logs_by_identifier: Dict[str, List[raftlog.LogEntry]],
+) -> None:
     # Figure 7f
     leader_state, follower_state = init_raft_states(paper_log, logs_by_identifier["f"])
 
@@ -311,15 +338,18 @@ def test_handle_message_f(paper_log, logs_by_identifier) -> None:
     assert leader_state.next_index[1] == 10
 
 
-def test_consensus(paper_log, logs_by_identifier) -> None:
+def test_consensus(
+    paper_log: List[raftlog.LogEntry],
+    logs_by_identifier: Dict[str, List[raftlog.LogEntry]],
+) -> None:
     leader_state = init_raft_state(
-        paper_log, 6, raftstate.StateEnum.LEADER, {0: 10, 1: None, 2: None}
+        paper_log, raftstate.Role.LEADER, 6, {0: 10, 1: None, 2: None}
     )
     follower_a_state = init_raft_state(
-        logs_by_identifier["a"], 6, raftstate.StateEnum.FOLLOWER, {}
+        logs_by_identifier["a"], raftstate.Role.FOLLOWER, 6, {}
     )
     follower_b_state = init_raft_state(
-        logs_by_identifier["b"], 6, raftstate.StateEnum.FOLLOWER, {}
+        logs_by_identifier["b"], raftstate.Role.FOLLOWER, 6, {}
     )
 
     request = leader_state.handle_leader_heartbeat(0, 0, [1, 2])

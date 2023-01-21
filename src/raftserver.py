@@ -76,9 +76,6 @@ class RaftServer:
 
                 # Append entries to own log.
                 elif command.startswith("append"):
-                    for _ in range(len(self.state.log)):
-                        self.state.log.pop()
-
                     for item in command.replace("append ", "").split():
                         self.state.handle_message(
                             raftmessage.ClientLogAppend(
@@ -107,7 +104,7 @@ class RaftServer:
         threading.Thread(target=self.respond, args=()).start()
 
         if self.identifier == 0:
-            self.state.change_state(raftstate.StateEnum.LEADER)
+            self.state.change_state(raftstate.Role.LEADER)
 
         self.instruct()
 

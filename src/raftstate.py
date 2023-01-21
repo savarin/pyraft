@@ -19,8 +19,9 @@ class NotFollower(Exception):
     pass
 
 
-class StateEnum(enum.Enum):
+class Role(enum.Enum):
     LEADER = "LEADER"
+    CANDIDATE = "CANDIDATE"
     FOLLOWER = "FOLLOWER"
 
 
@@ -28,15 +29,15 @@ class StateEnum(enum.Enum):
 class RaftState:
     def __post_init__(self) -> None:
         self.log: List[raftlog.LogEntry] = []
-        self.current_state: StateEnum = StateEnum.FOLLOWER
+        self.role: Role = Role.FOLLOWER
         self.current_term: int = -1
         self.commit_index: int = -1
         self.next_index: Dict[int, Optional[int]] = {
             identifier: None for identifier in raftconfig.ADDRESS_BY_IDENTIFIER
         }
 
-    def change_state(self, state_enum: StateEnum) -> None:
-        self.current_state = state_enum
+    def change_state(self, state_enum: Role) -> None:
+        self.role = state_enum
 
     def get_next_index(self, target: int) -> int:
         next_index = self.next_index[target]
@@ -83,7 +84,7 @@ class RaftState:
         else:
             next_index = previous_index + 1
 
-        previous_term = self.log[previous_index].term
+        previous_term = self.log[previous_index].term if previous_index >= 0 else -1
 
         return (
             previous_index,
@@ -98,7 +99,7 @@ class RaftState:
         """
         Client adds a log entry (received by leader).
         """
-        if self.current_state != StateEnum.LEADER:
+        if self.role != Role.LEADER:
             raise NotLeader("Require leader role for client log append.")
 
         self.log.append(raftlog.LogEntry(self.current_term, item))
@@ -119,7 +120,7 @@ class RaftState:
         Update to the log (received by a follower).
         """
         # TODO: When exception raised, return message to leader.
-        if self.current_state != StateEnum.FOLLOWER:
+        if self.role != Role.FOLLOWER:
             raise NotFollower("Require follower role for append entries request.")
 
         self.commit_index = commit_index
@@ -152,7 +153,7 @@ class RaftState:
         """
         Follower response (received by leader).
         """
-        if self.current_state != StateEnum.LEADER:
+        if self.role != Role.LEADER:
             raise NotLeader("Require leader role for append entries response.")
 
         if success:
@@ -177,7 +178,7 @@ class RaftState:
         """
         Leader heartbeat. Send AppendEntries to all followers.
         """
-        if self.current_state != StateEnum.LEADER:
+        if self.role != Role.LEADER:
             raise NotLeader("Require leader role for leader heartbeat.")
 
         messages: List[raftmessage.Message] = []
@@ -193,26 +194,26 @@ class RaftState:
     def handle_text(
         self, source: int, target: int, text: str
     ) -> List[raftmessage.Message]:
-        # Simplify testing with custom commands passed by messages. Have ability
-        # to expose and modify state, but not send messages so update is not
-        # implemented.
+        """
+        Simplify testing with custom commands passed by messages. Have ability
+        to expose and modify state, but not send messages so update is not
+        implemented.
+        """
         if text.startswith("expose"):
-            message = f"\n+ {str(self.commit_index)} {str(self.log)}"
+            text = f"+ {str(self.commit_index)} {str(self.log)}"
 
         elif text.startswith("append"):
-            message = text.replace("append ", "")
-
             try:
-                for item in message.split():
+                for item in text.replace("append ", "").split():
                     self.handle_client_log_append(target, target, item)
 
             except Exception as e:
-                message = f"\nException: {e}"
+                text = f"Exception: {e}"
 
         else:
-            message = f"\n{source} > {target} {text}"
+            text = f"{source} > {target} {text}"
 
-        print(message + f"\n{target} > ", end="")
+        print(f"\n{text}\n{target} > ", end="")
         return []
 
     def handle_message(self, message: raftmessage.Message) -> List[raftmessage.Message]:
