@@ -27,6 +27,8 @@ class Role(enum.Enum):
 
 @dataclasses.dataclass
 class RaftState:
+    identifier: int
+
     def __post_init__(self) -> None:
         self.log: List[raftlog.LogEntry] = []
         self.role: Role = Role.FOLLOWER
@@ -35,7 +37,9 @@ class RaftState:
         self.next_index: Dict[int, Optional[int]] = {
             identifier: None for identifier in raftconfig.ADDRESS_BY_IDENTIFIER
         }
-        self.voted_for: Optional[int] = None
+        self.voted_for: Dict[int, Optional[int]] = {
+            identifier: None for identifier in raftconfig.ADDRESS_BY_IDENTIFIER
+        }
 
     def become_leader(self):
         self.role = Role.LEADER
@@ -43,9 +47,21 @@ class RaftState:
     def become_candidate(self):
         self.role = Role.CANDIDATE
         self.current_term += 1
+        self.voted_for[self.identifier] = self.identifier
 
     def become_follower(self):
         self.role = Role.FOLLOWER
+
+    def has_won_election(self):
+        votes = len(
+            [
+                identifier
+                for identifier in self.voted_for
+                if identifier == self.identifier
+            ]
+        )
+
+        return votes >= (len(self.voted_for) // 2)
 
     def get_next_index(self, target: int) -> int:
         next_index = self.next_index[target]
@@ -227,22 +243,47 @@ class RaftState:
             assert term == self.current_term
 
             # Require vote not already cast to a different candidate.
-            if self.voted_for is not None and self.voted_for != source:
+            if (
+                self.voted_for[self.identifier] is not None
+                and self.voted_for[self.identifier] != source
+            ):
                 success = False
 
             else:
                 # If vote not cast, cast vote.
-                if self.voted_for is None:
-                    self.voted_for = source
+                if self.voted_for[self.identifier] is None:
+                    self.voted_for[self.identifier] = source
 
                 success = True
 
-        return [raftmessage.RequestVoteResponse(target, source, success, self.current_term)]
+        return [
+            raftmessage.RequestVoteResponse(target, source, success, self.current_term)
+        ]
 
     def handle_request_vote_response(
-        self, source: int, target: int, success: bool
+        self,
+        source: int,
+        target: int,
+        success: bool,
+        current_term: int,
     ) -> List[raftmessage.Message]:
-        return []
+        messages: List[raftmessage.Message] = []
+
+        if success:
+            self.voted_for[source] = target
+
+            if self.has_won_election():
+                self.become_leader()
+
+                followers = list(raftconfig.ADDRESS_BY_IDENTIFIER.keys())
+                followers.remove(self.identifier)
+
+                messages += self.handle_leader_heartbeat(target, target, followers)
+
+        elif current_term > self.current_term:
+            self.become_follower()
+
+        return messages
 
     def handle_text(
         self, source: int, target: int, text: str

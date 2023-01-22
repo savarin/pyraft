@@ -1,5 +1,6 @@
 from typing import Dict, List, Optional
 
+import raftconfig
 import raftlog
 import raftmessage
 import raftstate
@@ -10,9 +11,12 @@ def init_raft_state(
     log: List[raftlog.LogEntry],
     role: raftstate.Role,
     current_term: int,
-    next_index: Dict[int, Optional[int]],
+    next_index: Dict[int, Optional[int]] = {
+        identifier: None for identifier in raftconfig.ADDRESS_BY_IDENTIFIER
+    },
+    identifier: int = 0,
 ) -> raftstate.RaftState:
-    raft_state = raftstate.RaftState()
+    raft_state = raftstate.RaftState(identifier)
     raft_state.log = log
     raft_state.role = role
     raft_state.current_term = current_term
@@ -32,9 +36,7 @@ def init_raft_states(
 
 
 def test_get_next_index(paper_log: List[raftlog.LogEntry]) -> None:
-    leader_state = init_raft_state(
-        paper_log, raftstate.Role.LEADER, 6, {0: 10, 1: None, 2: None}
-    )
+    leader_state = init_raft_state(paper_log, raftstate.Role.LEADER, 6)
 
     assert leader_state.get_next_index(0) == 10
     assert leader_state.get_next_index(1) == 10
@@ -58,9 +60,7 @@ def test_update_next_index(paper_log: List[raftlog.LogEntry]) -> None:
 
 
 def test_update_commit_index(paper_log: List[raftlog.LogEntry]) -> None:
-    leader_state = init_raft_state(
-        paper_log, raftstate.Role.LEADER, 6, {0: 10, 1: None, 2: None}
-    )
+    leader_state = init_raft_state(paper_log, raftstate.Role.LEADER, 6)
     assert leader_state.commit_index == -1
 
     leader_state.update_commit_index()
@@ -76,9 +76,7 @@ def test_update_commit_index(paper_log: List[raftlog.LogEntry]) -> None:
 
 
 def test_create_append_entries_arguments(paper_log: List[raftlog.LogEntry]) -> None:
-    leader_state = init_raft_state(
-        paper_log, raftstate.Role.LEADER, 6, {0: 10, 1: None, 2: None}
-    )
+    leader_state = init_raft_state(paper_log, raftstate.Role.LEADER, 6)
 
     (
         previous_index,
@@ -110,7 +108,7 @@ def test_handle_append_entries_request(
 ) -> None:
     # Figure 7a
     follower_state = init_raft_state(
-        logs_by_identifier["a"], raftstate.Role.FOLLOWER, 6, {}
+        logs_by_identifier["a"], raftstate.Role.FOLLOWER, 6
     )
 
     response = follower_state.handle_append_entries_request(
@@ -134,9 +132,7 @@ def test_handle_append_entries_request(
 
 def test_handle_append_entries_response(paper_log: List[raftlog.LogEntry]) -> None:
     # Figure 7
-    leader_state = init_raft_state(
-        paper_log, raftstate.Role.LEADER, 6, {0: 10, 1: None, 2: None}
-    )
+    leader_state = init_raft_state(paper_log, raftstate.Role.LEADER, 6)
 
     response = leader_state.handle_append_entries_response(
         1, 0, False, 9, 0, {"pre_length": 9, "post_length": 9}
@@ -388,15 +384,16 @@ def test_consensus(
 
 
 def test_handle_vote_request(
-    paper_log: List[raftlog.LogEntry],
-    logs_by_identifier: Dict[str, List[raftlog.LogEntry]],
+    logs_by_identifier: Dict[str, List[raftlog.LogEntry]]
 ) -> None:
     """
     Set up with candidate state as per Figure 7c.
     """
     # Figure 7a
     follower_a_state = init_raft_state(
-        logs_by_identifier["a"], raftstate.Role.FOLLOWER, 6, {}
+        logs_by_identifier["a"],
+        raftstate.Role.FOLLOWER,
+        6,
     )
 
     # Initial vote request.
@@ -419,7 +416,9 @@ def test_handle_vote_request(
 
     # Figure 7d
     follower_d_state = init_raft_state(
-        logs_by_identifier["d"], raftstate.Role.FOLLOWER, 6, {}
+        logs_by_identifier["d"],
+        raftstate.Role.FOLLOWER,
+        6,
     )
 
     # Voter has longer log than candidate.
@@ -443,3 +442,63 @@ def test_handle_vote_request(
     assert isinstance(response, raftmessage.RequestVoteResponse)
     assert response.success
     assert response.current_term == 7
+
+
+def test_handle_vote_response(
+    paper_log: List[raftlog.LogEntry],
+    logs_by_identifier: Dict[str, List[raftlog.LogEntry]],
+) -> None:
+    """
+    Set up with candidate state as per Figure 7c.
+    """
+    candidate_state = init_raft_state(
+        logs_by_identifier["c"], raftstate.Role.FOLLOWER, 6, identifier=0
+    )
+    assert candidate_state.role == raftstate.Role.FOLLOWER
+    assert candidate_state.current_term == 6
+    assert candidate_state.voted_for == {0: None, 1: None, 2: None}
+
+    candidate_state.become_candidate()
+    assert candidate_state.role == raftstate.Role.CANDIDATE
+    assert candidate_state.current_term == 7
+    assert candidate_state.voted_for == {0: 0, 1: None, 2: None}
+
+    # Figure 7d
+    follower_d_state = init_raft_state(
+        logs_by_identifier["d"], raftstate.Role.FOLLOWER, 6, identifier=1
+    )
+
+    response = follower_d_state.handle_request_vote_request(0, 1, 7, 10, 6)[0]
+    assert isinstance(response, raftmessage.RequestVoteResponse)
+    assert not response.success
+    assert response.current_term == 7
+    assert follower_d_state.voted_for == {0: None, 1: None, 2: None}
+
+    request = candidate_state.handle_message(response)
+    assert candidate_state.role == raftstate.Role.CANDIDATE
+    assert candidate_state.current_term == 7
+    assert candidate_state.voted_for == {0: 0, 1: None, 2: None}
+    assert len(request) == 0
+
+    # Figure 7a
+    follower_a_state = init_raft_state(
+        logs_by_identifier["a"], raftstate.Role.FOLLOWER, 6, identifier=2
+    )
+
+    response = follower_a_state.handle_request_vote_request(0, 2, 7, 10, 6)[0]
+    assert isinstance(response, raftmessage.RequestVoteResponse)
+    assert response.success
+    assert response.current_term == 7
+    assert follower_a_state.voted_for == {0: None, 1: None, 2: 0}
+
+    request = candidate_state.handle_message(response)
+    assert candidate_state.role == raftstate.Role.LEADER
+    assert candidate_state.current_term == 7
+    assert candidate_state.voted_for == {0: 0, 1: None, 2: 0}
+    assert len(request) == 2
+
+    assert isinstance(request[0], raftmessage.AppendEntryRequest)
+    assert request[0].target == 1
+
+    assert isinstance(request[1], raftmessage.AppendEntryRequest)
+    assert request[1].target == 2

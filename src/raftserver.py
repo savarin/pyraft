@@ -15,7 +15,7 @@ class RaftServer:
     identifier: int
 
     def __post_init__(self) -> None:
-        self.state: raftstate.RaftState = raftstate.RaftState()
+        self.state: raftstate.RaftState = raftstate.RaftState(self.identifier)
         self.node: raftnode.RaftNode = raftnode.RaftNode(self.identifier)
 
     def send(self, messages: List[raftmessage.Message]) -> None:
@@ -33,6 +33,8 @@ class RaftServer:
                     end="",
                 )
 
+                # Text messages received will print out commands and the cursor,
+                # here print out cursor separately if non-Text.
                 if not isinstance(request, raftmessage.Text):
                     print(f"\n{request.target} > ", end="")
 
