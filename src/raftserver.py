@@ -104,7 +104,7 @@ class RaftServer:
         threading.Thread(target=self.respond, args=()).start()
 
         if self.identifier == 0:
-            self.state.change_state(raftstate.Role.LEADER)
+            self.state.role = raftstate.Role.LEADER
 
         self.instruct()
 

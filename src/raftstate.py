@@ -36,8 +36,15 @@ class RaftState:
             identifier: None for identifier in raftconfig.ADDRESS_BY_IDENTIFIER
         }
 
-    def change_state(self, state_enum: Role) -> None:
-        self.role = state_enum
+    def become_leader(self):
+        self.role = Role.LEADER
+
+    def become_candidate(self):
+        self.role = Role.CANDIDATE
+        self.current_term += 1
+
+    def become_follower(self):
+        self.role = Role.FOLLOWER
 
     def get_next_index(self, target: int) -> int:
         next_index = self.next_index[target]
@@ -191,6 +198,21 @@ class RaftState:
 
         return messages
 
+    def handle_request_vote_request(
+        self,
+        source: int,
+        target: int,
+        term: int,
+        last_log_index: int,
+        last_log_term: int,
+    ) -> List[raftmessage.Message]:
+        return []
+
+    def handle_request_vote_response(
+        self, source: int, target: int, success: bool
+    ) -> List[raftmessage.Message]:
+        return []
+
     def handle_text(
         self, source: int, target: int, text: str
     ) -> List[raftmessage.Message]:
@@ -231,8 +253,16 @@ class RaftState:
             case raftmessage.UpdateFollowers():
                 return self.handle_leader_heartbeat(**vars(message))
 
+            case raftmessage.RequestVoteRequest():
+                return self.handle_request_vote_request(**vars(message))
+
+            case raftmessage.RequestVoteResponse():
+                return self.handle_request_vote_response(**vars(message))
+
             case raftmessage.Text():
                 return self.handle_text(**vars(message))
 
             case _:
-                raise Exception("Exhaustive switch error on message type.")
+                raise Exception(
+                    "Exhaustive switch error on message type with message {message}."
+                )

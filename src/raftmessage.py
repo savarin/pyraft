@@ -12,6 +12,8 @@ class MessageType(enum.Enum):
     APPEND_REQUEST = "APPEND_REQUEST"
     APPEND_RESPONSE = "APPEND_RESPONSE"
     UPDATE_FOLLOWERS = "UPDATE_FOLLOWERS"
+    VOTE_REQUEST = "VOTE_REQUEST"
+    VOTE_RESPONSE = "VOTE_RESPONSE"
 
 
 @dataclasses.dataclass
@@ -51,6 +53,18 @@ class UpdateFollowers(Message):
     followers: List[int]
 
 
+@dataclasses.dataclass
+class RequestVoteRequest(Message):
+    term: int
+    last_log_index: int
+    last_log_term: int
+
+
+@dataclasses.dataclass
+class RequestVoteResponse(Message):
+    success: bool
+
+
 def encode_message(message: Message) -> str:
     attributes = vars(message).copy()
 
@@ -76,6 +90,17 @@ def encode_message(message: Message) -> str:
 
         case UpdateFollowers():
             attributes["message_type"] = MessageType.UPDATE_FOLLOWERS.value
+
+        case RequestVoteRequest():
+            attributes["message_type"] = MessageType.VOTE_REQUEST.value
+
+        case RequestVoteResponse():
+            attributes["message_type"] = MessageType.VOTE_RESPONSE.value
+
+        case _:
+            raise Exception(
+                f"Exhaustive switch error in encoding message with attributes {attributes}."
+            )
 
     return rafthelpers.encode_item(attributes)
 
@@ -105,6 +130,12 @@ def decode_message(string: str) -> Message:
 
         case MessageType.UPDATE_FOLLOWERS:
             return UpdateFollowers(**attributes)
+
+        case MessageType.VOTE_REQUEST:
+            return RequestVoteRequest(**attributes)
+
+        case MessageType.VOTE_RESPONSE:
+            return RequestVoteResponse(**attributes)
 
         case MessageType.TEXT:
             return Text(**attributes)
