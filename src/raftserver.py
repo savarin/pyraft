@@ -38,7 +38,11 @@ class RaftServer:
                 if not isinstance(request, raftmessage.Text):
                     print(f"\n{request.target} > ", end="")
 
-                response = self.state.handle_message(request)
+                response, role_change = self.state.handle_message(request)
+
+                if role_change is not None:
+                    response += self.state.handle_role_change(role_change)
+
                 self.send(response)
 
             except Exception as e:
@@ -90,7 +94,7 @@ class RaftServer:
                     followers = list(raftconfig.ADDRESS_BY_IDENTIFIER.keys())
                     followers.remove(self.identifier)
 
-                    messages = self.state.handle_message(
+                    messages, change_role = self.state.handle_message(
                         raftmessage.UpdateFollowers(
                             self.identifier, self.identifier, followers
                         )

@@ -41,17 +41,6 @@ class RaftState:
             identifier: None for identifier in raftconfig.ADDRESS_BY_IDENTIFIER
         }
 
-    def become_leader(self):
-        self.role = Role.LEADER
-
-    def become_candidate(self):
-        self.role = Role.CANDIDATE
-        self.current_term += 1
-        self.voted_for[self.identifier] = self.identifier
-
-    def become_follower(self):
-        self.role = Role.FOLLOWER
-
     def has_won_election(self):
         votes = len(
             [
@@ -62,6 +51,49 @@ class RaftState:
         )
 
         return votes >= (len(self.voted_for) // 2)
+
+    def create_heartbeat_messages(self) -> List[raftmessage.Message]:
+        followers = list(raftconfig.ADDRESS_BY_IDENTIFIER.keys())
+        followers.remove(self.identifier)
+
+        return self.handle_leader_heartbeat(
+            self.identifier, self.identifier, followers
+        )[0]
+
+    def become_leader(self) -> List[raftmessage.Message]:
+        self.role = Role.LEADER
+        return self.create_heartbeat_messages()
+
+    def become_candidate(self) -> List[raftmessage.Message]:
+        self.role = Role.CANDIDATE
+        self.current_term += 1
+        self.voted_for[self.identifier] = self.identifier
+        return []
+
+    def become_follower(self) -> List[raftmessage.Message]:
+        self.role = Role.FOLLOWER
+        return []
+
+    def handle_role_change(
+        self, role_change: Optional[Role]
+    ) -> List[raftmessage.Message]:
+        match role_change:
+            case Role.LEADER:
+                return self.become_leader()
+
+            case Role.CANDIDATE:
+                return self.become_candidate()
+
+            case Role.FOLLOWER:
+                return self.become_follower()
+
+            case None:
+                return []
+
+            case _:
+                raise Exception(
+                    f"Exhaustive switch error on role change to {role_change}."
+                )
 
     def get_next_index(self, target: int) -> int:
         next_index = self.next_index[target]
@@ -119,7 +151,7 @@ class RaftState:
 
     def handle_client_log_append(
         self, source: int, target: int, item: str
-    ) -> List[raftmessage.Message]:
+    ) -> Tuple[List[raftmessage.Message], Optional[Role]]:
         """
         Client adds a log entry (received by leader).
         """
@@ -129,7 +161,7 @@ class RaftState:
         self.log.append(raftlog.LogEntry(self.current_term, item))
         self.next_index[target] = len(self.log)
 
-        return []
+        return [], None
 
     def handle_append_entries_request(
         self,
@@ -139,11 +171,12 @@ class RaftState:
         previous_term: int,
         entries: List[raftlog.LogEntry],
         commit_index: int,
-    ) -> List[raftmessage.Message]:
+    ) -> Tuple[List[raftmessage.Message], Optional[Role]]:
         """
         Update to the log (received by a follower).
         """
-        # TODO: When exception raised, return message to leader.
+        # TODO: Review edge cases where role not follower because have role with
+        # different term, and if role change is needed.
         if self.role != Role.FOLLOWER:
             raise NotFollower("Require follower role for append entries request.")
 
@@ -163,7 +196,7 @@ class RaftState:
             raftmessage.AppendEntryResponse(
                 target, source, success, previous_index, len(entries), properties
             )
-        ]
+        ], None
 
     def handle_append_entries_response(
         self,
@@ -173,7 +206,7 @@ class RaftState:
         previous_index: int,
         entries_length: int,
         properties: Dict[str, int],
-    ) -> List[raftmessage.Message]:
+    ) -> Tuple[List[raftmessage.Message], Optional[Role]]:
         """
         Follower response (received by leader).
         """
@@ -183,7 +216,7 @@ class RaftState:
         if success:
             self.update_next_index(source, entries_length, previous_index)
             self.update_commit_index()
-            return []
+            return [], None
 
         previous_index -= 1
         _, previous_term, entries, commit_index = self.create_append_entries_arguments(
@@ -194,11 +227,11 @@ class RaftState:
             raftmessage.AppendEntryRequest(
                 target, source, previous_index, previous_term, entries, commit_index
             )
-        ]
+        ], None
 
     def handle_leader_heartbeat(
         self, source: int, target: int, followers: List[int]
-    ) -> List[raftmessage.Message]:
+    ) -> Tuple[List[raftmessage.Message], Optional[Role]]:
         """
         Leader heartbeat. Send AppendEntries to all followers.
         """
@@ -213,7 +246,7 @@ class RaftState:
             )
             messages.append(message)
 
-        return messages
+        return messages, None
 
     def handle_request_vote_request(
         self,
@@ -222,10 +255,12 @@ class RaftState:
         term: int,
         last_log_index: int,
         last_log_term: int,
-    ) -> List[raftmessage.Message]:
+    ) -> Tuple[List[raftmessage.Message], Optional[Role]]:
+        role_change = None
+
         if term > self.current_term:
             self.current_term = term
-            self.become_follower()
+            role_change = Role.FOLLOWER
 
         # Require candidate have higher term.
         if term < self.current_term:
@@ -258,7 +293,7 @@ class RaftState:
 
         return [
             raftmessage.RequestVoteResponse(target, source, success, self.current_term)
-        ]
+        ], role_change
 
     def handle_request_vote_response(
         self,
@@ -266,28 +301,24 @@ class RaftState:
         target: int,
         success: bool,
         current_term: int,
-    ) -> List[raftmessage.Message]:
+    ) -> Tuple[List[raftmessage.Message], Optional[Role]]:
         messages: List[raftmessage.Message] = []
+        role_change = None
 
         if success:
             self.voted_for[source] = target
 
             if self.has_won_election():
-                self.become_leader()
-
-                followers = list(raftconfig.ADDRESS_BY_IDENTIFIER.keys())
-                followers.remove(self.identifier)
-
-                messages += self.handle_leader_heartbeat(target, target, followers)
+                role_change = Role.LEADER
 
         elif current_term > self.current_term:
-            self.become_follower()
+            role_change = Role.FOLLOWER
 
-        return messages
+        return messages, role_change
 
     def handle_text(
         self, source: int, target: int, text: str
-    ) -> List[raftmessage.Message]:
+    ) -> Tuple[List[raftmessage.Message], Optional[Role]]:
         """
         Simplify testing with custom commands passed by messages. Have ability
         to expose and modify state, but not send messages so update is not
@@ -308,9 +339,11 @@ class RaftState:
             text = f"{source} > {target} {text}"
 
         print(f"\n{text}\n{target} > ", end="")
-        return []
+        return [], None
 
-    def handle_message(self, message: raftmessage.Message) -> List[raftmessage.Message]:
+    def handle_message(
+        self, message: raftmessage.Message
+    ) -> Tuple[List[raftmessage.Message], Optional[Role]]:
         # TODO: Ensure committed entries are not rewritten.
         match message:
             case raftmessage.ClientLogAppend():
