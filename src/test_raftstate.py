@@ -385,3 +385,61 @@ def test_consensus(
     follower_b_state.handle_message(request[1])[0]
     assert follower_a_state.commit_index == 9
     assert follower_b_state.commit_index == 9
+
+
+def test_handle_vote_request(
+    paper_log: List[raftlog.LogEntry],
+    logs_by_identifier: Dict[str, List[raftlog.LogEntry]],
+) -> None:
+    """
+    Set up with candidate state as per Figure 7c.
+    """
+    # Figure 7a
+    follower_a_state = init_raft_state(
+        logs_by_identifier["a"], raftstate.Role.FOLLOWER, 6, {}
+    )
+
+    # Initial vote request.
+    response = follower_a_state.handle_request_vote_request(0, 1, 7, 10, 6)[0]
+    assert isinstance(response, raftmessage.RequestVoteResponse)
+    assert response.success
+    assert response.current_term == 7
+
+    # Resend of vote request returns True.
+    response = follower_a_state.handle_request_vote_request(0, 1, 7, 10, 6)[0]
+    assert isinstance(response, raftmessage.RequestVoteResponse)
+    assert response.success
+    assert response.current_term == 7
+
+    # Vote request from another candidate returns False.
+    response = follower_a_state.handle_request_vote_request(2, 1, 7, 10, 6)[0]
+    assert isinstance(response, raftmessage.RequestVoteResponse)
+    assert not response.success
+    assert response.current_term == 7
+
+    # Figure 7d
+    follower_d_state = init_raft_state(
+        logs_by_identifier["d"], raftstate.Role.FOLLOWER, 6, {}
+    )
+
+    # Voter has longer log than candidate.
+    response = follower_d_state.handle_request_vote_request(0, 1, 7, 10, 6)[0]
+    assert isinstance(response, raftmessage.RequestVoteResponse)
+    assert not response.success
+    assert response.current_term == 7
+
+    follower_d_state.log.pop()
+
+    # Voter has most recent entry having higher term.
+    response = follower_d_state.handle_request_vote_request(0, 1, 7, 10, 6)[0]
+    assert isinstance(response, raftmessage.RequestVoteResponse)
+    assert not response.success
+    assert response.current_term == 7
+
+    follower_d_state.log.pop()
+
+    # Vote can now succeed.
+    response = follower_d_state.handle_request_vote_request(0, 1, 7, 10, 6)[0]
+    assert isinstance(response, raftmessage.RequestVoteResponse)
+    assert response.success
+    assert response.current_term == 7

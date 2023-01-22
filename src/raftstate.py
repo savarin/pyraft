@@ -35,6 +35,7 @@ class RaftState:
         self.next_index: Dict[int, Optional[int]] = {
             identifier: None for identifier in raftconfig.ADDRESS_BY_IDENTIFIER
         }
+        self.voted_for: Optional[int] = None
 
     def become_leader(self):
         self.role = Role.LEADER
@@ -206,7 +207,37 @@ class RaftState:
         last_log_index: int,
         last_log_term: int,
     ) -> List[raftmessage.Message]:
-        return []
+        if term > self.current_term:
+            self.current_term = term
+            self.become_follower()
+
+        # Require candidate have higher term.
+        if term < self.current_term:
+            success = False
+
+        # Require candidate have last entry having at least the same term.
+        elif last_log_term < self.log[-1].term:
+            success = False
+
+        # Require candidate have at least same log length.
+        elif last_log_index < len(self.log) - 1:
+            success = False
+
+        else:
+            assert term == self.current_term
+
+            # Require vote not already cast to a different candidate.
+            if self.voted_for is not None and self.voted_for != source:
+                success = False
+
+            else:
+                # If vote not cast, cast vote.
+                if self.voted_for is None:
+                    self.voted_for = source
+
+                success = True
+
+        return [raftmessage.RequestVoteResponse(target, source, success, self.current_term)]
 
     def handle_request_vote_response(
         self, source: int, target: int, success: bool

@@ -63,6 +63,7 @@ class RequestVoteRequest(Message):
 @dataclasses.dataclass
 class RequestVoteResponse(Message):
     success: bool
+    current_term: int
 
 
 def encode_message(message: Message) -> str:
