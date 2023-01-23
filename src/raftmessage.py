@@ -54,7 +54,7 @@ class UpdateFollowers(Message):
 
 @dataclasses.dataclass
 class RequestVoteRequest(Message):
-    term: int
+    current_term: int
     last_log_index: int
     last_log_term: int
 

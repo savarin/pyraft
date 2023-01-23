@@ -202,12 +202,13 @@ class RaftState:
         if self.role != Role.FOLLOWER:
             raise NotFollower("Require follower role for append entries request.")
 
-        self.commit_index = commit_index
-
         pre_length = len(self.log)
         success = raftlog.append_entries(
             self.log, previous_index, previous_term, entries
         )
+
+        if commit_index > self.commit_index:
+            self.commit_index = min(commit_index, len(self.log) - 1)
 
         properties = {
             "pre_length": pre_length,
@@ -265,18 +266,18 @@ class RaftState:
         self,
         source: int,
         target: int,
-        term: int,
+        current_term: int,
         last_log_index: int,
         last_log_term: int,
     ) -> Tuple[List[raftmessage.Message], Optional[Role]]:
         role_change = None
 
-        if term > self.current_term:
-            self.current_term = term
+        if current_term > self.current_term:
+            self.current_term = current_term
             role_change = Role.FOLLOWER
 
         # Require candidate have higher term.
-        if term < self.current_term:
+        if current_term < self.current_term:
             success = False
 
         # Require candidate have last entry having at least the same term.
@@ -288,7 +289,7 @@ class RaftState:
             success = False
 
         else:
-            assert term == self.current_term
+            assert current_term == self.current_term
 
             # Require vote not already cast to a different candidate.
             if (
