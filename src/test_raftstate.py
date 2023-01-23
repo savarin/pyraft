@@ -389,6 +389,19 @@ def test_handle_vote_request(
     """
     Set up with candidate state as per Figure 7c.
     """
+    # TODO: Carve out become_candidate to own test.
+    candidate_state = init_raft_state(
+        logs_by_identifier["c"], raftstate.Role.FOLLOWER, 6, identifier=0
+    )
+    assert candidate_state.role == raftstate.Role.FOLLOWER
+    assert candidate_state.current_term == 6
+    assert candidate_state.voted_for == {0: None, 1: None, 2: None}
+
+    request = candidate_state.become_candidate()
+    assert candidate_state.role == raftstate.Role.CANDIDATE
+    assert candidate_state.current_term == 7
+    assert candidate_state.voted_for == {0: 0, 1: None, 2: None}
+
     # Figure 7a
     follower_a_state = init_raft_state(
         logs_by_identifier["a"],
@@ -397,13 +410,13 @@ def test_handle_vote_request(
     )
 
     # Initial vote request.
-    response, _ = follower_a_state.handle_request_vote_request(0, 1, 7, 10, 6)
+    response, _ = follower_a_state.handle_message(request[0])
     assert isinstance(response[0], raftmessage.RequestVoteResponse)
     assert response[0].success
     assert response[0].current_term == 7
 
     # Resend of vote request returns True.
-    response, _ = follower_a_state.handle_request_vote_request(0, 1, 7, 10, 6)
+    response, _ = follower_a_state.handle_message(request[0])
     assert isinstance(response[0], raftmessage.RequestVoteResponse)
     assert response[0].success
     assert response[0].current_term == 7
@@ -422,7 +435,7 @@ def test_handle_vote_request(
     )
 
     # Voter has longer log than candidate.
-    response, _ = follower_d_state.handle_request_vote_request(0, 1, 7, 10, 6)
+    response, _ = follower_d_state.handle_message(request[1])
     assert isinstance(response[0], raftmessage.RequestVoteResponse)
     assert not response[0].success
     assert response[0].current_term == 7
@@ -430,7 +443,7 @@ def test_handle_vote_request(
     follower_d_state.log.pop()
 
     # Voter has most recent entry having higher term.
-    response, _ = follower_d_state.handle_request_vote_request(0, 1, 7, 10, 6)
+    response, _ = follower_d_state.handle_message(request[1])
     assert isinstance(response[0], raftmessage.RequestVoteResponse)
     assert not response[0].success
     assert response[0].current_term == 7
@@ -438,7 +451,7 @@ def test_handle_vote_request(
     follower_d_state.log.pop()
 
     # Vote can now succeed.
-    response, _ = follower_d_state.handle_request_vote_request(0, 1, 7, 10, 6)
+    response, _ = follower_d_state.handle_message(request[1])
     assert isinstance(response[0], raftmessage.RequestVoteResponse)
     assert response[0].success
     assert response[0].current_term == 7
@@ -454,21 +467,14 @@ def test_handle_vote_response(
     candidate_state = init_raft_state(
         logs_by_identifier["c"], raftstate.Role.FOLLOWER, 6, identifier=0
     )
-    assert candidate_state.role == raftstate.Role.FOLLOWER
-    assert candidate_state.current_term == 6
-    assert candidate_state.voted_for == {0: None, 1: None, 2: None}
-
-    candidate_state.become_candidate()
-    assert candidate_state.role == raftstate.Role.CANDIDATE
-    assert candidate_state.current_term == 7
-    assert candidate_state.voted_for == {0: 0, 1: None, 2: None}
+    request = candidate_state.become_candidate()
 
     # Figure 7d
     follower_d_state = init_raft_state(
         logs_by_identifier["d"], raftstate.Role.FOLLOWER, 6, identifier=1
     )
 
-    response, _ = follower_d_state.handle_request_vote_request(0, 1, 7, 10, 6)
+    response, _ = follower_d_state.handle_message(request[0])
     assert isinstance(response[0], raftmessage.RequestVoteResponse)
     assert not response[0].success
     assert response[0].current_term == 7
@@ -487,7 +493,7 @@ def test_handle_vote_response(
         logs_by_identifier["a"], raftstate.Role.FOLLOWER, 6, identifier=2
     )
 
-    response, _ = follower_a_state.handle_request_vote_request(0, 2, 7, 10, 6)
+    response, _ = follower_a_state.handle_message(request[1])
     assert isinstance(response[0], raftmessage.RequestVoteResponse)
     assert response[0].success
     assert response[0].current_term == 7

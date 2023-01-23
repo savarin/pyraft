@@ -52,23 +52,53 @@ class RaftState:
 
         return votes >= (len(self.voted_for) // 2)
 
-    def create_heartbeat_messages(self) -> List[raftmessage.Message]:
-        followers = list(raftconfig.ADDRESS_BY_IDENTIFIER.keys())
-        followers.remove(self.identifier)
+    def create_leader_heartbeats(
+        self, followers: List[int]
+    ) -> List[raftmessage.Message]:
+        messages: List[raftmessage.Message] = []
 
-        return self.handle_leader_heartbeat(
-            self.identifier, self.identifier, followers
-        )[0]
+        for follower in followers:
+            message = raftmessage.AppendEntryRequest(
+                self.identifier,
+                follower,
+                *self.create_append_entries_arguments(follower, None),
+            )
+            messages.append(message)
+
+        return messages
+
+    def create_vote_requests(self, followers: List[int]) -> List[raftmessage.Message]:
+        messages: List[raftmessage.Message] = []
+
+        for follower in followers:
+            message = raftmessage.RequestVoteRequest(
+                self.identifier,
+                follower,
+                self.current_term,
+                len(self.log) - 1,
+                self.log[-1].term,
+            )
+            messages.append(message)
+
+        return messages
 
     def become_leader(self) -> List[raftmessage.Message]:
         self.role = Role.LEADER
-        return self.create_heartbeat_messages()
+
+        followers = list(raftconfig.ADDRESS_BY_IDENTIFIER.keys())
+        followers.remove(self.identifier)
+
+        return self.create_leader_heartbeats(followers)
 
     def become_candidate(self) -> List[raftmessage.Message]:
         self.role = Role.CANDIDATE
         self.current_term += 1
         self.voted_for[self.identifier] = self.identifier
-        return []
+
+        followers = list(raftconfig.ADDRESS_BY_IDENTIFIER.keys())
+        followers.remove(self.identifier)
+
+        return self.create_vote_requests(followers)
 
     def become_follower(self) -> List[raftmessage.Message]:
         self.role = Role.FOLLOWER
@@ -238,15 +268,7 @@ class RaftState:
         if self.role != Role.LEADER:
             raise NotLeader("Require leader role for leader heartbeat.")
 
-        messages: List[raftmessage.Message] = []
-
-        for follower in followers:
-            message = raftmessage.AppendEntryRequest(
-                source, follower, *self.create_append_entries_arguments(follower, None)
-            )
-            messages.append(message)
-
-        return messages, None
+        return self.create_leader_heartbeats(followers), None
 
     def handle_request_vote_request(
         self,
