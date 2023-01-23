@@ -15,6 +15,10 @@ class NotLeader(Exception):
     pass
 
 
+class NotCandidate(Exception):
+    pass
+
+
 class NotFollower(Exception):
     pass
 
@@ -158,13 +162,14 @@ class RaftState:
 
     def create_append_entries_arguments(
         self, target: int
-    ) -> Tuple[int, int, List[raftlog.LogEntry], int]:
+    ) -> Tuple[int, int, int, List[raftlog.LogEntry], int]:
         next_index = self.next_index[target]
         previous_index = next_index - 1
 
         previous_term = self.log[previous_index].term if previous_index >= 0 else -1
 
         return (
+            self.current_term,
             previous_index,
             previous_term,
             self.log[next_index:],
@@ -189,6 +194,7 @@ class RaftState:
         self,
         source: int,
         target: int,
+        current_term: int,
         previous_index: int,
         previous_term: int,
         entries: List[raftlog.LogEntry],
@@ -197,8 +203,11 @@ class RaftState:
         """
         Update to the log (received by a follower).
         """
-        # TODO: Review edge cases where role not follower because have role with
-        # different term, and if role change is needed.
+        # Handle role change in method to enable processing of request.
+        if current_term > self.current_term:
+            self.current_term = current_term
+            self.become_follower()
+
         if self.role != Role.FOLLOWER:
             raise NotFollower("Require follower role for append entries request.")
 
@@ -217,7 +226,7 @@ class RaftState:
 
         return [
             raftmessage.AppendEntryResponse(
-                target, source, success, len(entries), properties
+                target, source, self.current_term, success, len(entries), properties
             )
         ], None
 
@@ -225,6 +234,7 @@ class RaftState:
         self,
         source: int,
         target: int,
+        current_term: int,
         success: bool,
         entries_length: int,
         properties: Dict[str, int],
@@ -232,6 +242,10 @@ class RaftState:
         """
         Follower response (received by leader).
         """
+        if current_term > self.current_term:
+            self.current_term = current_term
+            return [], Role.FOLLOWER
+
         if self.role != Role.LEADER:
             raise NotLeader("Require leader role for append entries response.")
 
@@ -270,11 +284,9 @@ class RaftState:
         last_log_index: int,
         last_log_term: int,
     ) -> Tuple[List[raftmessage.Message], Optional[Role]]:
-        role_change = None
-
         if current_term > self.current_term:
             self.current_term = current_term
-            role_change = Role.FOLLOWER
+            self.become_follower()
 
         # Require candidate have higher term.
         if current_term < self.current_term:
@@ -307,7 +319,7 @@ class RaftState:
 
         return [
             raftmessage.RequestVoteResponse(target, source, success, self.current_term)
-        ], role_change
+        ], None
 
     def handle_request_vote_response(
         self,
@@ -316,7 +328,12 @@ class RaftState:
         success: bool,
         current_term: int,
     ) -> Tuple[List[raftmessage.Message], Optional[Role]]:
-        messages: List[raftmessage.Message] = []
+        if current_term > self.current_term:
+            return [], Role.FOLLOWER
+
+        if self.role != Role.CANDIDATE:
+            raise NotCandidate("Require candidate role for vote response.")
+
         role_change = None
 
         if success:
@@ -325,10 +342,7 @@ class RaftState:
             if self.has_won_election():
                 role_change = Role.LEADER
 
-        elif current_term > self.current_term:
-            role_change = Role.FOLLOWER
-
-        return messages, role_change
+        return [], role_change
 
     def handle_text(
         self, source: int, target: int, text: str

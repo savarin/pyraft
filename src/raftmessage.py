@@ -34,6 +34,7 @@ class ClientLogAppend(Message):
 
 @dataclasses.dataclass
 class AppendEntryRequest(Message):
+    current_term: int
     previous_index: int
     previous_term: int
     entries: List[raftlog.LogEntry]
@@ -42,6 +43,7 @@ class AppendEntryRequest(Message):
 
 @dataclasses.dataclass
 class AppendEntryResponse(Message):
+    current_term: int
     success: bool
     entries_length: int
     properties: Dict[str, int]

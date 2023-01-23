@@ -56,12 +56,14 @@ def test_create_append_entries_arguments(paper_log: List[raftlog.LogEntry]) -> N
     leader_state = init_raft_state(paper_log, raftstate.Role.LEADER, 6)
 
     (
+        current_term,
         previous_index,
         previous_term,
         entries,
         commit_index,
     ) = leader_state.create_append_entries_arguments(1)
 
+    assert current_term == 6
     assert previous_index == 9
     assert previous_term == 6
     assert entries == []
@@ -77,7 +79,7 @@ def test_handle_append_entries_request(
     )
 
     response, _ = follower_state.handle_append_entries_request(
-        0, 1, 8, 6, [raftlog.LogEntry(6, "9")], -1
+        0, 1, 6, 8, 6, [raftlog.LogEntry(6, "9")], -1
     )
     assert isinstance(response[0], raftmessage.AppendEntryResponse)
     assert response[0].success
@@ -86,7 +88,7 @@ def test_handle_append_entries_request(
     assert response[0].properties["post_length"] == 10
 
     response, _ = follower_state.handle_append_entries_request(
-        0, 1, 10, 6, [raftlog.LogEntry(6, "11")], -1
+        0, 1, 6, 10, 6, [raftlog.LogEntry(6, "11")], -1
     )
     assert isinstance(response[0], raftmessage.AppendEntryResponse)
     assert not response[0].success
@@ -100,7 +102,7 @@ def test_handle_append_entries_response(paper_log: List[raftlog.LogEntry]) -> No
     leader_state = init_raft_state(paper_log, raftstate.Role.LEADER, 6)
 
     response, _ = leader_state.handle_append_entries_response(
-        1, 0, False, 0, {"pre_length": 9, "post_length": 9}
+        1, 0, 6, False, 0, {"pre_length": 9, "post_length": 9}
     )
 
     assert isinstance(response[0], raftmessage.AppendEntryRequest)
@@ -109,7 +111,7 @@ def test_handle_append_entries_response(paper_log: List[raftlog.LogEntry]) -> No
     assert response[0].entries == [raftlog.LogEntry(6, "9")]
 
     response, _ = leader_state.handle_append_entries_response(
-        1, 0, True, 1, {"pre_length": 9, "post_length": 9}
+        1, 0, 6, True, 1, {"pre_length": 9, "post_length": 9}
     )
     assert len(response) == 0
 
