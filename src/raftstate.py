@@ -34,7 +34,10 @@ class RaftState:
         self.role: Role = Role.FOLLOWER
         self.current_term: int = -1
         self.commit_index: int = -1
-        self.next_index: Dict[int, Optional[int]] = {
+        self.next_index: Dict[int, int] = {
+            identifier: len(self.log) for identifier in raftconfig.ADDRESS_BY_IDENTIFIER
+        }
+        self.match_index: Dict[int, Optional[int]] = {
             identifier: None for identifier in raftconfig.ADDRESS_BY_IDENTIFIER
         }
         self.voted_for: Dict[int, Optional[int]] = {
@@ -61,7 +64,7 @@ class RaftState:
             message = raftmessage.AppendEntryRequest(
                 self.identifier,
                 follower,
-                *self.create_append_entries_arguments(follower, None),
+                *self.create_append_entries_arguments(follower),
             )
             messages.append(message)
 
@@ -70,13 +73,15 @@ class RaftState:
     def create_vote_requests(self, followers: List[int]) -> List[raftmessage.Message]:
         messages: List[raftmessage.Message] = []
 
+        previous_term = self.log[-1].term if len(self.log) >= 0 else -1
+
         for follower in followers:
             message = raftmessage.RequestVoteRequest(
                 self.identifier,
                 follower,
                 self.current_term,
                 len(self.log) - 1,
-                self.log[-1].term,
+                previous_term,
             )
             messages.append(message)
 
@@ -84,6 +89,9 @@ class RaftState:
 
     def become_leader(self) -> List[raftmessage.Message]:
         self.role = Role.LEADER
+        self.next_index = {identifier: len(self.log) for identifier in self.next_index}
+        self.match_index = {identifier: None for identifier in self.next_index}
+        self.match_index[self.identifier] = len(self.log) - 1
 
         followers = list(raftconfig.ADDRESS_BY_IDENTIFIER.keys())
         followers.remove(self.identifier)
@@ -125,50 +133,34 @@ class RaftState:
                     f"Exhaustive switch error on role change to {role_change}."
                 )
 
-    def get_next_index(self, target: int) -> int:
+    def update_next_index(self, target: int, entries_length: int) -> None:
         next_index = self.next_index[target]
+        self.next_index[target] = next_index + entries_length
 
-        if next_index is None:
-            return len(self.log)
-
-        assert next_index is not None
-        return next_index
-
-    def update_next_index(
-        self, target: int, entries_length: int, previous_index: int
-    ) -> None:
-        next_index = self.next_index[target]
-
-        if next_index is None:
-            self.next_index[target] = previous_index + 1 + entries_length
-
-        else:
-            self.next_index[target] = next_index + entries_length
+    def update_match_index(self, target: int) -> None:
+        self.match_index[target] = self.next_index[target] - 1
 
     def update_commit_index(self) -> None:
-        next_index_values = sorted(
-            [item for item in self.next_index.values() if item is not None]
+        match_index_values = sorted(
+            [item for item in self.match_index.values() if item is not None]
         )
         majority_count = len(self.next_index) // 2 + 1
-        null_count = len(self.next_index) - len(next_index_values)
+        null_count = len(self.next_index) - len(match_index_values)
 
         # Require at least majority of next_index to be non-null.
-        if len(next_index_values) < majority_count:
+        if len(match_index_values) < majority_count:
             return None
 
-        self.commit_index = next_index_values[majority_count - 1 - null_count] - 1
+        commit_index = match_index_values[majority_count - 1 - null_count]
+
+        if self.log[commit_index].term == self.current_term:
+            self.commit_index = commit_index
 
     def create_append_entries_arguments(
-        self,
-        target: int,
-        previous_index: Optional[int],
+        self, target: int
     ) -> Tuple[int, int, List[raftlog.LogEntry], int]:
-        if previous_index is None:
-            next_index = self.get_next_index(target)
-            previous_index = next_index - 1
-
-        else:
-            next_index = previous_index + 1
+        next_index = self.next_index[target]
+        previous_index = next_index - 1
 
         previous_term = self.log[previous_index].term if previous_index >= 0 else -1
 
@@ -224,7 +216,7 @@ class RaftState:
 
         return [
             raftmessage.AppendEntryResponse(
-                target, source, success, previous_index, len(entries), properties
+                target, source, success, len(entries), properties
             )
         ], None
 
@@ -233,7 +225,6 @@ class RaftState:
         source: int,
         target: int,
         success: bool,
-        previous_index: int,
         entries_length: int,
         properties: Dict[str, int],
     ) -> Tuple[List[raftmessage.Message], Optional[Role]]:
@@ -244,18 +235,18 @@ class RaftState:
             raise NotLeader("Require leader role for append entries response.")
 
         if success:
-            self.update_next_index(source, entries_length, previous_index)
+            self.update_next_index(source, entries_length)
+            self.update_match_index(source)
             self.update_commit_index()
             return [], None
 
-        previous_index -= 1
-        _, previous_term, entries, commit_index = self.create_append_entries_arguments(
-            source, previous_index
-        )
+        self.next_index[source] -= 1
 
         return [
             raftmessage.AppendEntryRequest(
-                target, source, previous_index, previous_term, entries, commit_index
+                target,
+                source,
+                *self.create_append_entries_arguments(source),
             )
         ], None
 

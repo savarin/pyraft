@@ -43,7 +43,6 @@ class AppendEntryRequest(Message):
 @dataclasses.dataclass
 class AppendEntryResponse(Message):
     success: bool
-    previous_index: int
     entries_length: int
     properties: Dict[str, int]
 
