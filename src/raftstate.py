@@ -38,13 +38,39 @@ class RaftState:
         self.role: Role = Role.FOLLOWER
         self.current_term: int = -1
         self.commit_index: int = -1
-        self.next_index: Dict[int, int] = {
+
+        self.reset_attributes(-1, True, True)
+
+    def reset_attributes(
+        self, term: int, reset_commit_index: bool, reset_voted_for: bool
+    ) -> None:
+        """
+        Certain attributes need to be reset on state changes. Here we take the
+        conservative approach of resets even though it might be updated later,
+        such as when a leader is elected.
+
+        - commit_index is reset when moving to follower since this might have
+          moved when acting as a leader but has not been communicated.
+        - next_index is reset even though initialized when elected leader and
+          only used as a leader.
+        - match_index is reset even though initialized when elected leader and
+          only used as a leader.
+        - voted_for is reset when moving to follower to ensure stale votes are
+          not counted.
+        """
+        if reset_commit_index:
+            self.commit_index = -1
+
+        if reset_voted_for:
+            self.voted_for: Dict[int, Optional[int]] = {
+                identifier: None for identifier in raftconfig.ADDRESS_BY_IDENTIFIER
+            }
+
+        self.current_term = term
+        self.next_index: Dict[int, Optional[int]] = {
             identifier: len(self.log) for identifier in raftconfig.ADDRESS_BY_IDENTIFIER
         }
         self.match_index: Dict[int, Optional[int]] = {
-            identifier: None for identifier in raftconfig.ADDRESS_BY_IDENTIFIER
-        }
-        self.voted_for: Dict[int, Optional[int]] = {
             identifier: None for identifier in raftconfig.ADDRESS_BY_IDENTIFIER
         }
 
@@ -93,8 +119,7 @@ class RaftState:
 
     def become_leader(self) -> List[raftmessage.Message]:
         self.role = Role.LEADER
-        self.next_index = {identifier: len(self.log) for identifier in self.next_index}
-        self.match_index = {identifier: None for identifier in self.next_index}
+        self.reset_attributes(self.current_term, False, False)
         self.match_index[self.identifier] = len(self.log) - 1
 
         followers = list(raftconfig.ADDRESS_BY_IDENTIFIER.keys())
@@ -104,7 +129,7 @@ class RaftState:
 
     def become_candidate(self) -> List[raftmessage.Message]:
         self.role = Role.CANDIDATE
-        self.current_term += 1
+        self.reset_attributes(self.current_term + 1, False, True)
         self.voted_for[self.identifier] = self.identifier
 
         followers = list(raftconfig.ADDRESS_BY_IDENTIFIER.keys())
@@ -112,12 +137,16 @@ class RaftState:
 
         return self.create_vote_requests(followers)
 
-    def become_follower(self) -> List[raftmessage.Message]:
+    def become_follower(self, term: int) -> List[raftmessage.Message]:
         self.role = Role.FOLLOWER
+        self.reset_attributes(term, True, True)
         return []
 
+    # TODO: Carve out state change logic into separate method.
     def handle_role_change(
-        self, role_change: Optional[Role]
+        self,
+        role_change: Optional[Role],
+        term: Optional[int] = None,
     ) -> List[raftmessage.Message]:
         match role_change:
             case Role.LEADER:
@@ -127,7 +156,8 @@ class RaftState:
                 return self.become_candidate()
 
             case Role.FOLLOWER:
-                return self.become_follower()
+                term = term or self.current_term
+                return self.become_follower(term)
 
             case None:
                 return []
@@ -139,10 +169,13 @@ class RaftState:
 
     def update_next_index(self, target: int, entries_length: int) -> None:
         next_index = self.next_index[target]
+        assert next_index is not None
         self.next_index[target] = next_index + entries_length
 
     def update_match_index(self, target: int) -> None:
-        self.match_index[target] = self.next_index[target] - 1
+        next_index = self.next_index[target]
+        assert next_index is not None
+        self.match_index[target] = next_index - 1
 
     def update_commit_index(self) -> None:
         match_index_values = sorted(
@@ -164,6 +197,7 @@ class RaftState:
         self, target: int
     ) -> Tuple[int, int, int, List[raftlog.LogEntry], int]:
         next_index = self.next_index[target]
+        assert next_index is not None
         previous_index = next_index - 1
 
         previous_term = self.log[previous_index].term if previous_index >= 0 else -1
@@ -205,11 +239,20 @@ class RaftState:
         """
         # Handle role change in method to enable processing of request.
         if current_term > self.current_term:
-            self.current_term = current_term
-            self.become_follower()
+            self.become_follower(current_term)
 
+        # If candidate and discover current leader, then become follower.
+        if self.role == Role.CANDIDATE and current_term == self.current_term:
+            self.become_follower(current_term)
+
+        # If candidate and have higher term, reject request. If leader and have
+        # the same term or higher, reject the request.
         if self.role != Role.FOLLOWER:
-            raise NotFollower("Require follower role for append entries request.")
+            return [
+                raftmessage.AppendEntryResponse(
+                    target, source, self.current_term, False, len(entries), {}
+                )
+            ], None
 
         pre_length = len(self.log)
         success = raftlog.append_entries(
@@ -242,12 +285,12 @@ class RaftState:
         """
         Follower response (received by leader).
         """
+        if self.role != Role.LEADER:
+            raise NotLeader("Require leader role for append entries response.")
+
         if current_term > self.current_term:
             self.current_term = current_term
             return [], Role.FOLLOWER
-
-        if self.role != Role.LEADER:
-            raise NotLeader("Require leader role for append entries response.")
 
         if success:
             self.update_next_index(source, entries_length)
@@ -255,7 +298,9 @@ class RaftState:
             self.update_commit_index()
             return [], None
 
-        self.next_index[source] -= 1
+        next_index = self.next_index[source]
+        assert next_index is not None
+        self.next_index[source] = next_index - 1
 
         return [
             raftmessage.AppendEntryRequest(
@@ -285,8 +330,16 @@ class RaftState:
         last_log_term: int,
     ) -> Tuple[List[raftmessage.Message], Optional[Role]]:
         if current_term > self.current_term:
-            self.current_term = current_term
-            self.become_follower()
+            self.become_follower(current_term)
+
+        # If candidate or leader with same term or higher term, can simply
+        # reject vote request.
+        if self.role != Role.FOLLOWER:
+            return [
+                raftmessage.RequestVoteResponse(
+                    target, source, False, self.current_term
+                )
+            ], None
 
         # Require candidate have higher term.
         if current_term < self.current_term:
@@ -328,11 +381,11 @@ class RaftState:
         success: bool,
         current_term: int,
     ) -> Tuple[List[raftmessage.Message], Optional[Role]]:
-        if current_term > self.current_term:
-            return [], Role.FOLLOWER
-
         if self.role != Role.CANDIDATE:
             raise NotCandidate("Require candidate role for vote response.")
+
+        if current_term > self.current_term:
+            return [], Role.FOLLOWER
 
         role_change = None
 
