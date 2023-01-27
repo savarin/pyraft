@@ -92,12 +92,16 @@ def evaluate_role_change(
     """
     Enumeration of changes from term comparisons.
 
-    - If target_term higher than source_term, change term and reset voted_for,
-      change to follower if not follower
+    - If target_term higher than source_term, change current_term to higher
+      target_term and reset voted_for since get 1 vote in each term. Change to
+      follower if not follower.
     - If target_term equal to source_term and source is leader and target is
-      candidate, then change target to follower. Not change term or voted for.
+      candidate, then change target to follower. Do not change current_term or
+      voted_for since already voted.
     - If timer is source, then change target from follower to candidate,
       increase term by one and set voted_for to self.
+    - If election commission is source, then change target from candidate to
+      leader, but other changes handled in evaluate_operations_from_role_change.
     """
     current_term = target_term
     voted_for = Operation.PASS
@@ -190,9 +194,23 @@ def evaluate_role_change(
     return role_change, current_term, voted_for
 
 
-def evaluate_operations_from_role_change(
+def evaluate_operations(
     role_change: Optional[Tuple[Role, Role]]
 ) -> Tuple[Operation, Operation, Operation, Operation]:
+    """
+    Changes to attributes on the back of role changes.
+
+    - For next_index and match_index, only need to be dictionaries when
+      promoted to be leader. When change from leader to follower, reset back
+      to None.
+    - For commit_index, this may move as leader but not yet broadcasted to
+      followers. To be safe, set this to None when change from leader to
+      follower.
+    - For current_votes, only need to be dictionaries when change to candidate.
+      Currently retain when promoted to leader. For candidate there is
+      redundancy in having voted_for and current_votes show self voting. When
+      change from candidate to follower, set to None.
+    """
     match role_change:
         case (Role.FOLLOWER, Role.CANDIDATE):
             next_index = Operation.PASS
@@ -240,12 +258,9 @@ def enumerate_state_change(
         source_role, source_term, target_role, target_term
     )
 
-    (
-        next_index,
-        match_index,
-        commit_index,
-        current_votes,
-    ) = evaluate_operations_from_role_change(role_change)
+    next_index, match_index, commit_index, current_votes = evaluate_operations(
+        role_change
+    )
 
     return dict(
         role_change=role_change,

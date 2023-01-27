@@ -11,18 +11,6 @@ import raftmessage
 import raftrole
 
 
-class NotLeader(Exception):
-    pass
-
-
-class NotCandidate(Exception):
-    pass
-
-
-class NotFollower(Exception):
-    pass
-
-
 @dataclasses.dataclass
 class RaftState:
     identifier: int
@@ -55,6 +43,11 @@ class RaftState:
         elif state_change["match_index"] == raftrole.Operation.INITIALIZE:
             self.match_index = {identifier: None for identifier in self.config}
 
+        # Exception to RESET_TO_NONE, where reset is to -1. This is to simplify
+        # message passing since integers are handled in the encoding/decoding
+        # step, but None needs an extra step. Setting to -1 skip this step, but
+        # care is needed at call sites to make sure change is via assignment
+        # rather than addition.
         if state_change["commit_index"] == raftrole.Operation.RESET_TO_NONE:
             self.commit_index = -1
         elif state_change["commit_index"] == raftrole.Operation.INITIALIZE:
@@ -71,11 +64,13 @@ class RaftState:
             self.current_votes = {identifier: None for identifier in self.config}
             self.current_votes[self.identifier] = self.identifier
 
-    def get_majority_count(self):
+    def count_majority(self) -> int:
         return 1 + len(self.config) // 2
 
-    def has_won_election(self):
-        votes = len(
+    def count_self_votes(self) -> int:
+        assert self.current_votes is not None
+
+        return len(
             [
                 identifier
                 for identifier in self.current_votes.values()
@@ -83,12 +78,33 @@ class RaftState:
             ]
         )
 
-        return votes >= self.get_majority_count()
+    def count_null_votes(self) -> int:
+        assert self.current_votes is not None
+
+        return len(
+            [
+                identifier
+                for identifier in self.current_votes.values()
+                if identifier is None
+            ]
+        )
+
+    def has_won_election(self) -> bool:
+        return self.count_self_votes() >= self.count_majority()
+
+    def create_followers_list(self) -> List[int]:
+        followers = list(self.config.keys())
+        followers.remove(self.identifier)
+
+        return followers
 
     def create_leader_heartbeats(
-        self, followers: List[int]
+        self, followers: Optional[List[int]]
     ) -> List[raftmessage.Message]:
         messages: List[raftmessage.Message] = []
+
+        if followers is None:
+            followers = self.create_followers_list()
 
         for follower in followers:
             message = raftmessage.AppendEntryRequest(
@@ -100,8 +116,13 @@ class RaftState:
 
         return messages
 
-    def create_vote_requests(self, followers: List[int]) -> List[raftmessage.Message]:
+    def create_vote_requests(
+        self, followers: Optional[List[int]]
+    ) -> List[raftmessage.Message]:
         messages: List[raftmessage.Message] = []
+
+        if followers is None:
+            followers = self.create_followers_list()
 
         previous_term = self.log[-1].term if len(self.log) >= 0 else -1
 
@@ -117,7 +138,7 @@ class RaftState:
 
         return messages
 
-    def update_indexes(self, target: int) -> None:
+    def update_indexes(self, target: int) -> Optional[int]:
         assert self.next_index is not None
         self.next_index[target] = len(self.log)
 
@@ -129,8 +150,8 @@ class RaftState:
         match_index_values = sorted(
             [value for value in self.match_index.values() if value is not None]
         )
-        majority_count = self.get_majority_count()
-        null_count = len(self.next_index) - len(match_index_values)
+        majority_count = self.count_majority()
+        null_count = self.count_null_votes()
 
         # Require at least majority of next_index to be non-null.
         if len(match_index_values) < majority_count:
@@ -139,8 +160,12 @@ class RaftState:
         # Get median value with index corrected for null values
         commit_index = match_index_values[majority_count - 1 - null_count]
 
+        # Require latest be entry from leader's current term.
         if self.log[commit_index].term == self.current_term:
             self.commit_index = commit_index
+
+        # Have commit_index return to allow unit tests.
+        return commit_index
 
     def create_append_entries_arguments(
         self, target: int
