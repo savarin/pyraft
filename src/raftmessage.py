@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import List
 import dataclasses
 import enum
 
@@ -52,7 +52,6 @@ class AppendEntryResponse(Message):
     current_term: int
     success: bool
     entries_length: int
-    properties: Dict[str, int]
 
 
 @dataclasses.dataclass

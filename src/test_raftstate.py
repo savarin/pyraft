@@ -93,7 +93,6 @@ def test_update_indexes(paper_log: List[raftlog.LogEntry]) -> None:
     assert leader_state.commit_index == -1
 
     potential_commit_index, median_match_index = leader_state.update_indexes(1)
-
     assert leader_state.next_index == {0: 10, 1: 10, 2: 10}
     assert leader_state.match_index == {0: None, 1: 9, 2: None}
     assert leader_state.commit_index == -1
@@ -101,13 +100,11 @@ def test_update_indexes(paper_log: List[raftlog.LogEntry]) -> None:
     assert median_match_index is None
 
     leader_state.handle_client_log_append(0, 0, "10")
-
     assert leader_state.next_index == {0: 11, 1: 10, 2: 10}
     assert leader_state.match_index == {0: 10, 1: 9, 2: None}
     assert leader_state.commit_index == -1
 
     potential_commit_index, median_match_index = leader_state.update_indexes(1)
-
     assert leader_state.next_index == {0: 11, 1: 11, 2: 10}
     assert leader_state.match_index == {0: 10, 1: 10, 2: None}
     assert leader_state.commit_index == 10
@@ -147,8 +144,6 @@ def test_handle_append_entries_request(
     assert isinstance(response[0], raftmessage.AppendEntryResponse)
     assert response[0].success
     assert response[0].entries_length == 1
-    assert response[0].properties["pre_length"] == 9
-    assert response[0].properties["post_length"] == 10
 
     response, _ = follower_state.handle_append_entries_request(
         0, 1, 6, 10, 6, [raftlog.LogEntry(6, "11")], -1
@@ -156,26 +151,19 @@ def test_handle_append_entries_request(
     assert isinstance(response[0], raftmessage.AppendEntryResponse)
     assert not response[0].success
     assert response[0].entries_length == 1
-    assert response[0].properties["pre_length"] == 10
-    assert response[0].properties["post_length"] == 10
 
 
 def test_handle_append_entries_response(paper_log: List[raftlog.LogEntry]) -> None:
     # Figure 7
     leader_state, _ = init_raft_state(0, paper_log, raftrole.Role.LEADER, 6)
 
-    response, _ = leader_state.handle_append_entries_response(
-        1, 0, 6, False, 0, {"pre_length": 9, "post_length": 9}
-    )
-
+    response, _ = leader_state.handle_append_entries_response(1, 0, 6, False, 0)
     assert isinstance(response[0], raftmessage.AppendEntryRequest)
     assert response[0].previous_index == 8
     assert response[0].previous_term == 6
     assert response[0].entries == [raftlog.LogEntry(6, "9")]
 
-    response, _ = leader_state.handle_append_entries_response(
-        1, 0, 6, True, 1, {"pre_length": 9, "post_length": 9}
-    )
+    response, _ = leader_state.handle_append_entries_response(1, 0, 6, True, 1)
     assert len(response) == 0
 
 
@@ -199,20 +187,14 @@ def test_handle_message_a(
     )
 
     response, _ = follower_state.handle_message(request[0])
-
     assert not response[0].success
     assert response[0].entries_length == 0
-    assert response[0].properties["pre_length"] == 9
-    assert response[0].properties["post_length"] == 9
     assert leader_state.next_index[1] == 10
 
     request, _ = leader_state.handle_message(response[0])
     response, _ = follower_state.handle_message(request[0])
-
     assert response[0].success
     assert response[0].entries_length == 1
-    assert response[0].properties["pre_length"] == 9
-    assert response[0].properties["post_length"] == 10
     assert leader_state.next_index[1] == 9
 
     assert len(leader_state.handle_message(response[0])[0]) == 0
@@ -233,8 +215,6 @@ def test_handle_message_b(
 
         assert not response[0].success
         assert response[0].entries_length == i
-        assert response[0].properties["pre_length"] == 4
-        assert response[0].properties["post_length"] == 4
         assert leader_state.next_index[1] == 10 - i
 
         request, _ = leader_state.handle_message(response[0])
@@ -242,8 +222,6 @@ def test_handle_message_b(
     response, _ = follower_state.handle_message(request[0])
     assert response[0].success
     assert response[0].entries_length == 6
-    assert response[0].properties["pre_length"] == 4
-    assert response[0].properties["post_length"] == 10
     assert leader_state.next_index[1] == 4
 
     assert len(leader_state.handle_message(response[0])[0]) == 0
@@ -260,11 +238,8 @@ def test_handle_message_c(
     )
 
     response, _ = follower_state.handle_message(request[0])
-
     assert response[0].success
     assert response[0].entries_length == 0
-    assert response[0].properties["pre_length"] == 11
-    assert response[0].properties["post_length"] == 11
     assert leader_state.next_index[1] == 10
 
     assert len(leader_state.handle_message(response[0])[0]) == 0
@@ -281,11 +256,8 @@ def test_handle_message_d(
     )
 
     response, _ = follower_state.handle_message(request[0])
-
     assert response[0].success
     assert response[0].entries_length == 0
-    assert response[0].properties["pre_length"] == 12
-    assert response[0].properties["post_length"] == 12
     assert leader_state.next_index[1] == 10
 
     assert len(leader_state.handle_message(response[0])[0]) == 0
@@ -308,8 +280,6 @@ def test_handle_message_e(
 
         assert not response[0].success
         assert response[0].entries_length == i
-        assert response[0].properties["pre_length"] == 7
-        assert response[0].properties["post_length"] == 7
         assert leader_state.next_index[1] == 10 - i
 
         request, _ = leader_state.handle_message(response[0])
@@ -317,8 +287,6 @@ def test_handle_message_e(
     response, _ = follower_state.handle_message(request[0])
     assert response[0].success
     assert response[0].entries_length == 5
-    assert response[0].properties["pre_length"] == 7
-    assert response[0].properties["post_length"] == 10
     assert leader_state.next_index[1] == 5
 
     assert len(leader_state.handle_message(response[0])[0]) == 0
@@ -339,8 +307,6 @@ def test_handle_message_f(
 
         assert not response[0].success
         assert response[0].entries_length == i
-        assert response[0].properties["pre_length"] == 11
-        assert response[0].properties["post_length"] == 11
         assert leader_state.next_index[1] is 10 - i
 
         request, _ = leader_state.handle_message(response[0])
@@ -348,8 +314,6 @@ def test_handle_message_f(
     response, _ = follower_state.handle_message(request[0])
     assert response[0].success
     assert response[0].entries_length == 7
-    assert response[0].properties["pre_length"] == 11
-    assert response[0].properties["post_length"] == 10
     assert leader_state.next_index[1] == 3
 
     assert len(leader_state.handle_message(response[0])[0]) == 0
@@ -421,7 +385,6 @@ def test_handle_vote_request(
         candidate_state, candidate_state.current_term
     )
     request, _ = candidate_state.handle_candidate_solicitation(0, 0)
-
     assert candidate_state.role == raftrole.Role.CANDIDATE
     assert candidate_state.current_term == 7
     assert candidate_state.voted_for == 0

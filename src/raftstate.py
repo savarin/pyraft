@@ -215,11 +215,14 @@ class RaftState:
         if self.role != raftrole.Role.FOLLOWER:
             return [
                 raftmessage.AppendEntryResponse(
-                    target, source, self.current_term, False, len(entries), {}
+                    target,
+                    source,
+                    self.current_term,
+                    False,
+                    len(entries),
                 )
             ], state_change["role_change"]
 
-        pre_length = len(self.log)
         success = raftlog.append_entries(
             self.log, previous_index, previous_term, entries
         )
@@ -229,14 +232,9 @@ class RaftState:
         if commit_index > self.commit_index:
             self.commit_index = min(commit_index, len(self.log) - 1)
 
-        properties = {
-            "pre_length": pre_length,
-            "post_length": len(self.log),
-        }
-
         return [
             raftmessage.AppendEntryResponse(
-                target, source, self.current_term, success, len(entries), properties
+                target, source, self.current_term, success, len(entries)
             )
         ], state_change["role_change"]
 
@@ -247,7 +245,6 @@ class RaftState:
         current_term: int,
         success: bool,
         entries_length: int,
-        properties: Dict[str, int],
     ) -> Tuple[
         List[raftmessage.Message], Optional[Tuple[raftrole.Role, raftrole.Role]]
     ]:
