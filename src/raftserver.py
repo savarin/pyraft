@@ -120,7 +120,8 @@ class RaftServer:
         threading.Thread(target=self.respond, args=()).start()
 
         if self.identifier == 0:
-            self.state.role = raftstate.Role.LEADER
+            raftstate.change_role_from_follower_to_candidate(self.state)
+            raftstate.change_role_from_candidate_to_leader(self.state)
 
         self.instruct()
 

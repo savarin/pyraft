@@ -496,3 +496,32 @@ class RaftState:
                 raise Exception(
                     "Exhaustive switch error on message type with message {message}."
                 )
+
+
+###
+###   HELPERS FOR RAFTSERVER AND TESTS
+###
+
+
+def change_role_from_follower_to_candidate(
+    state: RaftState, current_term: Optional[int] = None
+) -> None:
+    state_change = raftrole.enumerate_state_change(
+        raftrole.Role.TIMER,
+        current_term or state.current_term,
+        raftrole.Role.FOLLOWER,
+        current_term or state.current_term,
+    )
+    state.implement_state_change(state_change)
+
+
+def change_role_from_candidate_to_leader(
+    state: RaftState, current_term: Optional[int] = None
+) -> None:
+    state_change = raftrole.enumerate_state_change(
+        raftrole.Role.ELECTION_COMMISSION,
+        current_term or state.current_term,
+        raftrole.Role.CANDIDATE,
+        current_term or state.current_term,
+    )
+    state.implement_state_change(state_change)

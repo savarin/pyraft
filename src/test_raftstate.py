@@ -7,30 +7,6 @@ import raftrole
 from test_raftlog import paper_log, logs_by_identifier
 
 
-def change_role_from_follower_to_candidate(
-    state: raftstate.RaftState, current_term: int
-) -> None:
-    state_change = raftrole.enumerate_state_change(
-        raftrole.Role.TIMER,
-        current_term,
-        raftrole.Role.FOLLOWER,
-        current_term,
-    )
-    state.implement_state_change(state_change)
-
-
-def change_role_from_candidate_to_leader(
-    state: raftstate.RaftState, current_term: int
-) -> None:
-    state_change = raftrole.enumerate_state_change(
-        raftrole.Role.ELECTION_COMMISSION,
-        current_term,
-        raftrole.Role.CANDIDATE,
-        current_term,
-    )
-    state.implement_state_change(state_change)
-
-
 def init_raft_state(
     identifier: int,
     log: List[raftlog.LogEntry],
@@ -44,13 +20,13 @@ def init_raft_state(
     state.role = raftrole.Role.FOLLOWER
 
     if role in {raftrole.Role.CANDIDATE, raftrole.Role.LEADER}:
-        change_role_from_follower_to_candidate(state, state.current_term - 1)
+        raftstate.change_role_from_follower_to_candidate(state, state.current_term - 1)
         messages, _ = state.handle_candidate_solicitation(
             state.identifier, state.identifier
         )
 
         if role == raftrole.Role.LEADER:
-            change_role_from_candidate_to_leader(state, state.current_term)
+            raftstate.change_role_from_candidate_to_leader(state)
             messages, _ = state.handle_leader_heartbeat(
                 state.identifier, state.identifier
             )
@@ -381,9 +357,7 @@ def test_handle_vote_request(
     assert candidate_state.current_term == 6
     assert candidate_state.voted_for is None
 
-    change_role_from_follower_to_candidate(
-        candidate_state, candidate_state.current_term
-    )
+    raftstate.change_role_from_follower_to_candidate(candidate_state)
     request, _ = candidate_state.handle_candidate_solicitation(0, 0)
     assert candidate_state.role == raftrole.Role.CANDIDATE
     assert candidate_state.current_term == 7
