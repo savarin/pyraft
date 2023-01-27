@@ -1,10 +1,34 @@
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import raftlog
 import raftmessage
 import raftstate
 import raftrole
 from test_raftlog import paper_log, logs_by_identifier
+
+
+def change_role_from_follower_to_candidate(
+    state: raftstate.RaftState, current_term: int
+) -> None:
+    state_change = raftrole.enumerate_state_change(
+        raftrole.Role.TIMER,
+        current_term,
+        raftrole.Role.FOLLOWER,
+        current_term,
+    )
+    state.implement_state_change(state_change)
+
+
+def change_role_from_candidate_to_leader(
+    state: raftstate.RaftState, current_term: int
+) -> None:
+    state_change = raftrole.enumerate_state_change(
+        raftrole.Role.ELECTION_COMMISSION,
+        current_term,
+        raftrole.Role.CANDIDATE,
+        current_term,
+    )
+    state.implement_state_change(state_change)
 
 
 def init_raft_state(
@@ -20,29 +44,12 @@ def init_raft_state(
     state.role = raftrole.Role.FOLLOWER
 
     if role in {raftrole.Role.CANDIDATE, raftrole.Role.LEADER}:
-        followers = list(state.config.keys())
-        followers.remove(state.identifier)
-
-        state_change = raftrole.enumerate_state_change(
-            raftrole.Role.TIMER,
-            state.current_term - 1,
-            raftrole.Role.FOLLOWER,
-            state.current_term - 1,
-        )
-        state.implement_state_change(state_change)
-
-        messages = state.create_vote_requests(followers)
+        change_role_from_follower_to_candidate(state, state.current_term - 1)
+        messages = state.create_vote_requests(state.create_followers_list())
 
         if role == raftrole.Role.LEADER:
-            state_change = raftrole.enumerate_state_change(
-                raftrole.Role.ELECTION_COMMISSION,
-                state.current_term,
-                raftrole.Role.CANDIDATE,
-                state.current_term,
-            )
-            state.implement_state_change(state_change)
-
-            messages = state.create_leader_heartbeats(followers)
+            change_role_from_candidate_to_leader(state, state.current_term)
+            messages = state.create_leader_heartbeats(state.create_followers_list())
 
     else:
         messages = []
@@ -51,17 +58,21 @@ def init_raft_state(
 
 
 def init_raft_states(
-    leader_log: List[raftlog.LogEntry], follower_log: List[raftlog.LogEntry]
+    leader_log: List[raftlog.LogEntry],
+    follower_a_log: List[raftlog.LogEntry],
+    follower_b_log: Optional[List[raftlog.LogEntry]],
 ):
     leader_state, messages = init_raft_state(0, leader_log, raftrole.Role.LEADER, 6)
-    follower_state, _ = init_raft_state(1, follower_log, raftrole.Role.FOLLOWER, 6)
+    follower_a_state, _ = init_raft_state(1, follower_a_log, raftrole.Role.FOLLOWER, 6)
 
-    return leader_state, follower_state, messages
+    if follower_b_log is not None:
+        follower_b_state, _ = init_raft_state(
+            2, follower_b_log, raftrole.Role.FOLLOWER, 6
+        )
+    else:
+        follower_b_state = None
 
-
-def v(s):
-    for k, v in vars(s).items():
-        print(k, v)
+    return leader_state, follower_a_state, follower_b_state, messages
 
 
 def test_update_indexes(paper_log: List[raftlog.LogEntry]) -> None:
@@ -175,8 +186,8 @@ def test_handle_message_a(
     logs_by_identifier: Dict[str, List[raftlog.LogEntry]],
 ) -> None:
     # Figure 7a
-    leader_state, follower_state, request = init_raft_states(
-        paper_log, logs_by_identifier["a"]
+    leader_state, follower_state, _, request = init_raft_states(
+        paper_log, logs_by_identifier["a"], None
     )
 
     response, _ = follower_state.handle_message(request[0])
@@ -205,8 +216,8 @@ def test_handle_message_b(
     logs_by_identifier: Dict[str, List[raftlog.LogEntry]],
 ) -> None:
     # Figure 7b
-    leader_state, follower_state, request = init_raft_states(
-        paper_log, logs_by_identifier["b"]
+    leader_state, follower_state, _, request = init_raft_states(
+        paper_log, logs_by_identifier["b"], None
     )
 
     for i in range(6):
@@ -236,8 +247,8 @@ def test_handle_message_c(
     logs_by_identifier: Dict[str, List[raftlog.LogEntry]],
 ) -> None:
     # Figure 7c
-    leader_state, follower_state, request = init_raft_states(
-        paper_log, logs_by_identifier["c"]
+    leader_state, follower_state, _, request = init_raft_states(
+        paper_log, logs_by_identifier["c"], None
     )
 
     response, _ = follower_state.handle_message(request[0])
@@ -257,8 +268,8 @@ def test_handle_message_d(
     logs_by_identifier: Dict[str, List[raftlog.LogEntry]],
 ) -> None:
     # Figure 7d
-    leader_state, follower_state, request = init_raft_states(
-        paper_log, logs_by_identifier["d"]
+    leader_state, follower_state, _, request = init_raft_states(
+        paper_log, logs_by_identifier["d"], None
     )
 
     response, _ = follower_state.handle_message(request[0])
@@ -278,8 +289,8 @@ def test_handle_message_e(
     logs_by_identifier: Dict[str, List[raftlog.LogEntry]],
 ) -> None:
     # Figure 7e
-    leader_state, follower_state, request = init_raft_states(
-        paper_log, logs_by_identifier["e"]
+    leader_state, follower_state, _, request = init_raft_states(
+        paper_log, logs_by_identifier["e"], None
     )
 
     request, _ = leader_state.handle_message(raftmessage.UpdateFollowers(0, 0, [1]))
@@ -311,8 +322,8 @@ def test_handle_message_f(
     logs_by_identifier: Dict[str, List[raftlog.LogEntry]],
 ) -> None:
     # Figure 7f
-    leader_state, follower_state, request = init_raft_states(
-        paper_log, logs_by_identifier["f"]
+    leader_state, follower_state, _, request = init_raft_states(
+        paper_log, logs_by_identifier["f"], None
     )
 
     for i in range(7):
@@ -341,12 +352,8 @@ def test_consensus(
     paper_log: List[raftlog.LogEntry],
     logs_by_identifier: Dict[str, List[raftlog.LogEntry]],
 ) -> None:
-    leader_state, request = init_raft_state(0, paper_log, raftrole.Role.LEADER, 6)
-    follower_a_state, _ = init_raft_state(
-        1, logs_by_identifier["a"], raftrole.Role.FOLLOWER, 6
-    )
-    follower_b_state, _ = init_raft_state(
-        2, logs_by_identifier["b"], raftrole.Role.FOLLOWER, 6
+    leader_state, follower_a_state, follower_b_state, request = init_raft_states(
+        paper_log, logs_by_identifier["a"], logs_by_identifier["b"]
     )
 
     assert leader_state.next_index == {0: 10, 1: 10, 2: 10}
@@ -402,14 +409,9 @@ def test_handle_vote_request(
     assert candidate_state.current_term == 6
     assert candidate_state.voted_for is None
 
-    state_change = raftrole.enumerate_state_change(
-        raftrole.Role.TIMER,
-        candidate_state.current_term,
-        raftrole.Role.FOLLOWER,
-        candidate_state.current_term,
+    change_role_from_follower_to_candidate(
+        candidate_state, candidate_state.current_term
     )
-    candidate_state.implement_state_change(state_change)
-
     request = candidate_state.create_vote_requests([1, 2])
 
     assert candidate_state.role == raftrole.Role.CANDIDATE
