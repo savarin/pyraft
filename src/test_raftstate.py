@@ -45,7 +45,9 @@ def init_raft_state(
 
     if role in {raftrole.Role.CANDIDATE, raftrole.Role.LEADER}:
         change_role_from_follower_to_candidate(state, state.current_term - 1)
-        messages = state.create_vote_requests(state.create_followers_list())
+        messages, _ = state.handle_candidate_solicitation(
+            state.identifier, state.identifier
+        )
 
         if role == raftrole.Role.LEADER:
             change_role_from_candidate_to_leader(state, state.current_term)
@@ -418,7 +420,7 @@ def test_handle_vote_request(
     change_role_from_follower_to_candidate(
         candidate_state, candidate_state.current_term
     )
-    request = candidate_state.create_vote_requests()
+    request, _ = candidate_state.handle_candidate_solicitation(0, 0)
 
     assert candidate_state.role == raftrole.Role.CANDIDATE
     assert candidate_state.current_term == 7

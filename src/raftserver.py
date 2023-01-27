@@ -49,7 +49,9 @@ class RaftServer:
 
                 elif role_change == (raftrole.Role.FOLLOWER, raftrole.Role.CANDIDATE):
                     assert len(response) == 0
-                    response += self.state.create_vote_requests()
+                    response += self.state.handle_candidate_solicitation(
+                        self.identifier, self.identifier
+                    )[0]
 
                 self.send(response)
 

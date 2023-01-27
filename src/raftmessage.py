@@ -9,9 +9,10 @@ import raftlog
 class MessageType(enum.Enum):
     TEXT = "TEXT"
     CLIENT_LOG_APPEND = "CLIENT_LOG_APPEND"
+    UPDATE_FOLLOWERS = "UPDATE_FOLLOWERS"
     APPEND_REQUEST = "APPEND_REQUEST"
     APPEND_RESPONSE = "APPEND_RESPONSE"
-    UPDATE_FOLLOWERS = "UPDATE_FOLLOWERS"
+    RUN_ELECTION = "RUN_ELECTION"
     VOTE_REQUEST = "VOTE_REQUEST"
     VOTE_RESPONSE = "VOTE_RESPONSE"
 
@@ -33,6 +34,11 @@ class ClientLogAppend(Message):
 
 
 @dataclasses.dataclass
+class UpdateFollowers(Message):
+    followers: List[int]
+
+
+@dataclasses.dataclass
 class AppendEntryRequest(Message):
     current_term: int
     previous_index: int
@@ -50,7 +56,7 @@ class AppendEntryResponse(Message):
 
 
 @dataclasses.dataclass
-class UpdateFollowers(Message):
+class RunElection(Message):
     followers: List[int]
 
 
@@ -77,6 +83,9 @@ def encode_message(message: Message) -> str:
         case ClientLogAppend():
             attributes["message_type"] = MessageType.CLIENT_LOG_APPEND.value
 
+        case UpdateFollowers():
+            attributes["message_type"] = MessageType.UPDATE_FOLLOWERS.value
+
         case AppendEntryRequest():
             entries = []
 
@@ -90,8 +99,8 @@ def encode_message(message: Message) -> str:
             attributes["message_type"] = MessageType.APPEND_RESPONSE.value
             attributes["success"] = int(attributes["success"])
 
-        case UpdateFollowers():
-            attributes["message_type"] = MessageType.UPDATE_FOLLOWERS.value
+        case RunElection():
+            attributes["message_type"] = MessageType.RUN_ELECTION.value
 
         case RequestVoteRequest():
             attributes["message_type"] = MessageType.VOTE_REQUEST.value
@@ -117,6 +126,9 @@ def decode_message(string: str) -> Message:
         case MessageType.CLIENT_LOG_APPEND:
             return ClientLogAppend(**attributes)
 
+        case MessageType.UPDATE_FOLLOWERS:
+            return UpdateFollowers(**attributes)
+
         case MessageType.APPEND_REQUEST:
             entries = []
 
@@ -130,7 +142,7 @@ def decode_message(string: str) -> Message:
             attributes["success"] = bool(attributes["success"])
             return AppendEntryResponse(**attributes)
 
-        case MessageType.UPDATE_FOLLOWERS:
+        case MessageType.RUN_ELECTION:
             return UpdateFollowers(**attributes)
 
         case MessageType.VOTE_REQUEST:

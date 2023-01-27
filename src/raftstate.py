@@ -289,6 +289,35 @@ class RaftState:
     ###   CANDIDATE-RELATED HELPERS AND HANDLERS
     ###
 
+    def handle_candidate_solicitation(
+        self, source: int, target: int, followers: Optional[List[int]] = None
+    ) -> Tuple[
+        List[raftmessage.Message], Optional[Tuple[raftrole.Role, raftrole.Role]]
+    ]:
+        messages: List[raftmessage.Message] = []
+        """
+        Candidate soliciting votes. Send RequestVoteRequest to all followers.
+        """
+        if self.role != raftrole.Role.CANDIDATE:
+            raise Exception("Not able to solicit votes when not candidate.")
+
+        if followers is None:
+            followers = self.create_followers_list()
+
+        previous_term = self.log[-1].term if len(self.log) >= 0 else -1
+
+        for follower in followers:
+            message = raftmessage.RequestVoteRequest(
+                self.identifier,
+                follower,
+                self.current_term,
+                len(self.log) - 1,
+                previous_term,
+            )
+            messages.append(message)
+
+        return messages, None
+
     def count_self_votes(self) -> int:
         assert self.current_votes is not None
         return len(
@@ -311,28 +340,6 @@ class RaftState:
 
     def has_won_election(self) -> bool:
         return self.count_self_votes() >= self.count_majority()
-
-    def create_vote_requests(
-        self, followers: Optional[List[int]] = None
-    ) -> List[raftmessage.Message]:
-        messages: List[raftmessage.Message] = []
-
-        if followers is None:
-            followers = self.create_followers_list()
-
-        previous_term = self.log[-1].term if len(self.log) >= 0 else -1
-
-        for follower in followers:
-            message = raftmessage.RequestVoteRequest(
-                self.identifier,
-                follower,
-                self.current_term,
-                len(self.log) - 1,
-                previous_term,
-            )
-            messages.append(message)
-
-        return messages
 
     def handle_request_vote_request(
         self,
@@ -475,6 +482,9 @@ class RaftState:
 
             case raftmessage.AppendEntryResponse():
                 return self.handle_append_entries_response(**vars(message))
+
+            case raftmessage.RunElection():
+                return self.handle_candidate_solicitation(**vars(message))
 
             case raftmessage.RequestVoteRequest():
                 return self.handle_request_vote_request(**vars(message))
