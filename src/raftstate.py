@@ -432,6 +432,9 @@ class RaftState:
     ###   CUSTOM HELPERS AND HANDLERS
     ###
 
+    def color(self):
+        return raftrole.color(self.role)
+
     def handle_text(
         self, source: int, target: int, text: str
     ) -> Tuple[
@@ -456,7 +459,7 @@ class RaftState:
         else:
             text = f"{source} > {target} {text}"
 
-        print(f"\n{text}\n{target} > ", end="")
+        print(self.color() + f"\n{text}\n{target} > ", end="")
         return [], None
 
     ###

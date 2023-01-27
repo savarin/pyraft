@@ -19,6 +19,9 @@ class RaftServer:
         self.state: raftstate.RaftState = raftstate.RaftState(self.identifier)
         self.node: raftnode.RaftNode = raftnode.RaftNode(self.identifier)
 
+    def color(self):
+        return raftrole.color(self.state.role)
+
     def send(self, messages: List[raftmessage.Message]) -> None:
         for message in messages:
             self.node.send(message.target, raftmessage.encode_message(message))
@@ -30,14 +33,14 @@ class RaftServer:
             try:
                 request = raftmessage.decode_message(payload)
                 print(
-                    f"\n{request.source} > {request.target} {payload}",
+                    self.color() + f"\n{request.source} > {request.target} {payload}",
                     end="",
                 )
 
                 # Text messages received will print out commands and the cursor,
                 # here print out cursor separately if non-Text.
                 if not isinstance(request, raftmessage.Text):
-                    print(f"\n{request.target} > ", end="")
+                    print(self.color() + f"\n{request.target} > ", end="")
 
                 response, role_change = self.state.handle_message(request)
 
@@ -56,13 +59,13 @@ class RaftServer:
                 self.send(response)
 
             except Exception as e:
-                print(f"Exception: {e}")
+                print(self.color() + f"Exception: {e}")
 
     def instruct(self) -> None:
         messages: List[raftmessage.Message] = []
 
         while True:
-            prompt = input(f"{self.identifier} > ")
+            prompt = input(self.color() + f"{self.identifier} > ")
 
             if not prompt:
                 return None
@@ -70,7 +73,7 @@ class RaftServer:
             try:
                 # If identifier not specified, use as shell.
                 if not (prompt[0].isdigit() and prompt[1] == " "):
-                    exec(f"print({prompt})")
+                    exec(f"print(self.color() + {prompt})")
                     continue
 
                 target, command = int(prompt[0]), prompt[2:]
@@ -86,7 +89,8 @@ class RaftServer:
                 # Here by exposing log.
                 if command.startswith("expose"):
                     print(
-                        f"+ {str(self.state.commit_index)} {str(self.state.log)}\n",
+                        self.color()
+                        + f"+ {str(self.state.commit_index)} {str(self.state.log)}\n",
                         end="",
                     )
 
@@ -113,7 +117,7 @@ class RaftServer:
                     self.send(messages)
 
             except Exception as e:
-                print(f"Exception: {e}")
+                print(self.color() + f"Exception: {e}")
 
     def run(self):
         self.node.start()
@@ -125,7 +129,7 @@ class RaftServer:
 
         self.instruct()
 
-        print("end.")
+        print(self.color() + "end.")
         os._exit(0)
 
 

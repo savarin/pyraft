@@ -61,6 +61,8 @@ None {None} match_index     only not None as leader, initialize to None
 from typing import Optional, Tuple, TypedDict
 import enum
 
+import colorama
+
 
 class Role(enum.Enum):
     LEADER = "LEADER"
@@ -271,3 +273,18 @@ def enumerate_state_change(
         voted_for=voted_for,
         current_votes=current_votes,
     )
+
+
+def color(role: Role) -> str:
+    match role:
+        case Role.LEADER:
+            return colorama.Fore.GREEN
+
+        case Role.CANDIDATE:
+            return colorama.Fore.YELLOW
+
+        case Role.FOLLOWER:
+            return colorama.Fore.RED
+
+        case _:
+            raise Exception(f"Invalid role {str(role)}")
