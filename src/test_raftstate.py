@@ -49,7 +49,9 @@ def init_raft_state(
 
         if role == raftrole.Role.LEADER:
             change_role_from_candidate_to_leader(state, state.current_term)
-            messages = state.create_leader_heartbeats(state.create_followers_list())
+            messages, _ = state.handle_leader_heartbeat(
+                state.identifier, state.identifier
+            )
 
     else:
         messages = []

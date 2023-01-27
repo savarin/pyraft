@@ -43,7 +43,9 @@ class RaftServer:
 
                 if role_change == (raftrole.Role.CANDIDATE, raftrole.Role.LEADER):
                     assert len(response) == 0
-                    response += self.state.create_leader_heartbeats()
+                    response += self.state.handle_leader_heartbeat(
+                        self.identifier, self.identifier
+                    )[0]
 
                 elif role_change == (raftrole.Role.FOLLOWER, raftrole.Role.CANDIDATE):
                     assert len(response) == 0

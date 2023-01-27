@@ -122,26 +122,8 @@ class RaftState:
             self.commit_index,
         )
 
-    def create_leader_heartbeats(
-        self, followers: Optional[List[int]] = None
-    ) -> List[raftmessage.Message]:
-        messages: List[raftmessage.Message] = []
-
-        if followers is None:
-            followers = self.create_followers_list()
-
-        for follower in followers:
-            message = raftmessage.AppendEntryRequest(
-                self.identifier,
-                follower,
-                *self.create_append_entries_arguments(follower),
-            )
-            messages.append(message)
-
-        return messages
-
     def handle_leader_heartbeat(
-        self, source: int, target: int, followers: List[int]
+        self, source: int, target: int, followers: Optional[List[int]] = None
     ) -> Tuple[
         List[raftmessage.Message], Optional[Tuple[raftrole.Role, raftrole.Role]]
     ]:
@@ -151,7 +133,20 @@ class RaftState:
         if self.role != raftrole.Role.LEADER:
             raise Exception("Not able to generate leader heartbeat when not leader.")
 
-        return self.create_leader_heartbeats(followers), None
+        if followers is None:
+            followers = self.create_followers_list()
+
+        messages: List[raftmessage.Message] = []
+
+        for follower in followers:
+            message = raftmessage.AppendEntryRequest(
+                self.identifier,
+                follower,
+                *self.create_append_entries_arguments(follower),
+            )
+            messages.append(message)
+
+        return messages, None
 
     def handle_append_entries_request(
         self,
