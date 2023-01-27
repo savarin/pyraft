@@ -135,7 +135,20 @@ class RaftState:
             ]
         )
 
-    def update_indexes(self, target: int) -> Tuple[Optional[int], Optional[int]]:
+    def get_index_metrics(self) -> Tuple[int, int]:
+        assert self.match_index is not None
+        non_null_match_index_values = sorted(
+            [value for value in self.match_index.values() if value is not None]
+        )
+        non_null_match_index_count = len(non_null_match_index_values)
+
+        # Get median value with index corrected for null values
+        median_match_index = self.count_majority() - 1 - self.count_null_match_index()
+        potential_commit_index = non_null_match_index_values[median_match_index]
+
+        return non_null_match_index_count, potential_commit_index
+
+    def update_indexes(self, target: int) -> None:
         assert self.next_index is not None
         self.next_index[target] = len(self.log)
 
@@ -144,26 +157,15 @@ class RaftState:
 
         # Change to leader's commit_index is only relevant after a successful
         # append entry response from follower.
-        match_index_values = sorted(
-            [value for value in self.match_index.values() if value is not None]
-        )
-        majority_count = self.count_majority()
-        null_count = self.count_null_match_index()
+        non_null_match_index_count, potential_commit_index = self.get_index_metrics()
 
         # Require at least majority of next_index to be non-null.
-        if len(match_index_values) < majority_count:
-            return None, None
-
-        # Get median value with index corrected for null values
-        median_match_index = majority_count - 1 - null_count
-        potential_commit_index = match_index_values[median_match_index]
+        if non_null_match_index_count < self.count_majority():
+            return None
 
         # Require latest be entry from leader's current term.
         if self.log[potential_commit_index].term == self.current_term:
             self.commit_index = potential_commit_index
-
-        # Have commit_index return to allow unit tests.
-        return potential_commit_index, median_match_index
 
     def handle_leader_heartbeat(
         self, source: int, target: int, followers: Optional[List[int]] = None
