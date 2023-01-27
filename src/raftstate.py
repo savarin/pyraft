@@ -30,6 +30,9 @@ class RaftState:
     ###   MULTI-PURPOSE HELPERS
     ###
 
+    def count_majority(self) -> int:
+        return 1 + len(self.config) // 2
+
     def create_followers_list(self) -> List[int]:
         followers = list(self.config.keys())
         followers.remove(self.identifier)
@@ -122,6 +125,46 @@ class RaftState:
             self.commit_index,
         )
 
+    def count_null_match_index(self) -> int:
+        assert self.match_index is not None
+        return len(
+            [
+                identifier
+                for identifier in self.match_index.values()
+                if identifier is None
+            ]
+        )
+
+    def update_indexes(self, target: int) -> Tuple[Optional[int], Optional[int]]:
+        assert self.next_index is not None
+        self.next_index[target] = len(self.log)
+
+        assert self.match_index is not None
+        self.match_index[target] = len(self.log) - 1
+
+        # Change to leader's commit_index is only relevant after a successful
+        # append entry response from follower.
+        match_index_values = sorted(
+            [value for value in self.match_index.values() if value is not None]
+        )
+        majority_count = self.count_majority()
+        null_count = self.count_null_match_index()
+
+        # Require at least majority of next_index to be non-null.
+        if len(match_index_values) < majority_count:
+            return None, None
+
+        # Get median value with index corrected for null values
+        median_match_index = majority_count - 1 - null_count
+        potential_commit_index = match_index_values[median_match_index]
+
+        # Require latest be entry from leader's current term.
+        if self.log[potential_commit_index].term == self.current_term:
+            self.commit_index = potential_commit_index
+
+        # Have commit_index return to allow unit tests.
+        return potential_commit_index, median_match_index
+
     def handle_leader_heartbeat(
         self, source: int, target: int, followers: Optional[List[int]] = None
     ) -> Tuple[
@@ -197,35 +240,6 @@ class RaftState:
             )
         ], state_change["role_change"]
 
-    def update_indexes(self, target: int) -> Optional[int]:
-        assert self.next_index is not None
-        self.next_index[target] = len(self.log)
-
-        assert self.match_index is not None
-        self.match_index[target] = len(self.log) - 1
-
-        # Change to leader's commit_index is only relevant after a successful
-        # append entry response from follower.
-        match_index_values = sorted(
-            [value for value in self.match_index.values() if value is not None]
-        )
-        majority_count = self.count_majority()
-        null_count = self.count_null_votes()
-
-        # Require at least majority of next_index to be non-null.
-        if len(match_index_values) < majority_count:
-            return None
-
-        # Get median value with index corrected for null values
-        commit_index = match_index_values[majority_count - 1 - null_count]
-
-        # Require latest be entry from leader's current term.
-        if self.log[commit_index].term == self.current_term:
-            self.commit_index = commit_index
-
-        # Have commit_index return to allow unit tests.
-        return commit_index
-
     def handle_append_entries_response(
         self,
         source: int,
@@ -274,6 +288,29 @@ class RaftState:
     ###
     ###   CANDIDATE-RELATED HELPERS AND HANDLERS
     ###
+
+    def count_self_votes(self) -> int:
+        assert self.current_votes is not None
+        return len(
+            [
+                identifier
+                for identifier in self.current_votes.values()
+                if identifier == self.identifier
+            ]
+        )
+
+    def count_null_votes(self) -> int:
+        assert self.current_votes is not None
+        return len(
+            [
+                identifier
+                for identifier in self.current_votes.values()
+                if identifier is None
+            ]
+        )
+
+    def has_won_election(self) -> bool:
+        return self.count_self_votes() >= self.count_majority()
 
     def create_vote_requests(
         self, followers: Optional[List[int]] = None
@@ -348,32 +385,6 @@ class RaftState:
         return [
             raftmessage.RequestVoteResponse(target, source, success, self.current_term)
         ], state_change["role_change"]
-
-    def count_majority(self) -> int:
-        return 1 + len(self.config) // 2
-
-    def count_self_votes(self) -> int:
-        assert self.current_votes is not None
-        return len(
-            [
-                identifier
-                for identifier in self.current_votes.values()
-                if identifier == self.identifier
-            ]
-        )
-
-    def count_null_votes(self) -> int:
-        assert self.current_votes is not None
-        return len(
-            [
-                identifier
-                for identifier in self.current_votes.values()
-                if identifier is None
-            ]
-        )
-
-    def has_won_election(self) -> bool:
-        return self.count_self_votes() >= self.count_majority()
 
     def handle_request_vote_response(
         self,

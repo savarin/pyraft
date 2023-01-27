@@ -90,11 +90,13 @@ def test_update_indexes(paper_log: List[raftlog.LogEntry]) -> None:
     assert leader_state.match_index == {0: None, 1: None, 2: None}
     assert leader_state.commit_index == -1
 
-    leader_state.update_indexes(1)
+    potential_commit_index, median_match_index = leader_state.update_indexes(1)
 
     assert leader_state.next_index == {0: 10, 1: 10, 2: 10}
     assert leader_state.match_index == {0: None, 1: 9, 2: None}
     assert leader_state.commit_index == -1
+    assert potential_commit_index is None
+    assert median_match_index is None
 
     leader_state.handle_client_log_append(0, 0, "10")
 
@@ -102,11 +104,13 @@ def test_update_indexes(paper_log: List[raftlog.LogEntry]) -> None:
     assert leader_state.match_index == {0: 10, 1: 9, 2: None}
     assert leader_state.commit_index == -1
 
-    leader_state.update_indexes(1)
+    potential_commit_index, median_match_index = leader_state.update_indexes(1)
 
     assert leader_state.next_index == {0: 11, 1: 11, 2: 10}
     assert leader_state.match_index == {0: 10, 1: 10, 2: None}
     assert leader_state.commit_index == 10
+    assert potential_commit_index == 10
+    assert median_match_index == 0
 
 
 def test_create_append_entries_arguments(paper_log: List[raftlog.LogEntry]) -> None:
