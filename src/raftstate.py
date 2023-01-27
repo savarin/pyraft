@@ -26,6 +26,16 @@ class RaftState:
         self.current_votes: Optional[Dict[int, Optional[int]]] = None
         self.config: Dict[int, Tuple[str, int]] = raftconfig.ADDRESS_BY_IDENTIFIER
 
+    ###
+    ###   MULTI-PURPOSE HELPERS
+    ###
+
+    def create_followers_list(self) -> List[int]:
+        followers = list(self.config.keys())
+        followers.remove(self.identifier)
+
+        return followers
+
     def implement_state_change(self, state_change: raftrole.StateChange) -> None:
         if state_change["role_change"] is not None:
             assert state_change["role_change"][0] == self.role
@@ -64,127 +74,9 @@ class RaftState:
             self.current_votes = {identifier: None for identifier in self.config}
             self.current_votes[self.identifier] = self.identifier
 
-    def count_majority(self) -> int:
-        return 1 + len(self.config) // 2
-
-    def count_self_votes(self) -> int:
-        assert self.current_votes is not None
-
-        return len(
-            [
-                identifier
-                for identifier in self.current_votes.values()
-                if identifier == self.identifier
-            ]
-        )
-
-    def count_null_votes(self) -> int:
-        assert self.current_votes is not None
-
-        return len(
-            [
-                identifier
-                for identifier in self.current_votes.values()
-                if identifier is None
-            ]
-        )
-
-    def has_won_election(self) -> bool:
-        return self.count_self_votes() >= self.count_majority()
-
-    def create_followers_list(self) -> List[int]:
-        followers = list(self.config.keys())
-        followers.remove(self.identifier)
-
-        return followers
-
-    def create_leader_heartbeats(
-        self, followers: Optional[List[int]]
-    ) -> List[raftmessage.Message]:
-        messages: List[raftmessage.Message] = []
-
-        if followers is None:
-            followers = self.create_followers_list()
-
-        for follower in followers:
-            message = raftmessage.AppendEntryRequest(
-                self.identifier,
-                follower,
-                *self.create_append_entries_arguments(follower),
-            )
-            messages.append(message)
-
-        return messages
-
-    def create_vote_requests(
-        self, followers: Optional[List[int]]
-    ) -> List[raftmessage.Message]:
-        messages: List[raftmessage.Message] = []
-
-        if followers is None:
-            followers = self.create_followers_list()
-
-        previous_term = self.log[-1].term if len(self.log) >= 0 else -1
-
-        for follower in followers:
-            message = raftmessage.RequestVoteRequest(
-                self.identifier,
-                follower,
-                self.current_term,
-                len(self.log) - 1,
-                previous_term,
-            )
-            messages.append(message)
-
-        return messages
-
-    def update_indexes(self, target: int) -> Optional[int]:
-        assert self.next_index is not None
-        self.next_index[target] = len(self.log)
-
-        assert self.match_index is not None
-        self.match_index[target] = len(self.log) - 1
-
-        # Change to leader's commit_index is only relevant after a successful
-        # append entry response from follower.
-        match_index_values = sorted(
-            [value for value in self.match_index.values() if value is not None]
-        )
-        majority_count = self.count_majority()
-        null_count = self.count_null_votes()
-
-        # Require at least majority of next_index to be non-null.
-        if len(match_index_values) < majority_count:
-            return None
-
-        # Get median value with index corrected for null values
-        commit_index = match_index_values[majority_count - 1 - null_count]
-
-        # Require latest be entry from leader's current term.
-        if self.log[commit_index].term == self.current_term:
-            self.commit_index = commit_index
-
-        # Have commit_index return to allow unit tests.
-        return commit_index
-
-    def create_append_entries_arguments(
-        self, target: int
-    ) -> Tuple[int, int, int, List[raftlog.LogEntry], int]:
-        assert self.next_index is not None
-        next_index = self.next_index[target]
-
-        assert next_index is not None
-        previous_index = next_index - 1
-        previous_term = self.log[previous_index].term if previous_index >= 0 else -1
-
-        assert next_index is not None
-        return (
-            self.current_term,
-            previous_index,
-            previous_term,
-            self.log[next_index:],
-            self.commit_index,
-        )
+    ###
+    ###   CLIENT-RELATED HELPERS AND HANDLERS
+    ###
 
     def handle_client_log_append(
         self, source: int, target: int, item: str
@@ -206,6 +98,60 @@ class RaftState:
         self.match_index[target] = len(self.log) - 1
 
         return [], None
+
+    ###
+    ###   LEADER-RELATED HELPERS AND HANDLERS
+    ###
+
+    def create_append_entries_arguments(
+        self, target: int
+    ) -> Tuple[int, int, int, List[raftlog.LogEntry], int]:
+        assert self.next_index is not None
+        next_index = self.next_index[target]
+
+        assert next_index is not None
+        previous_index = next_index - 1
+        previous_term = self.log[previous_index].term if previous_index >= 0 else -1
+
+        assert next_index is not None
+        return (
+            self.current_term,
+            previous_index,
+            previous_term,
+            self.log[next_index:],
+            self.commit_index,
+        )
+
+    def create_leader_heartbeats(
+        self, followers: Optional[List[int]] = None
+    ) -> List[raftmessage.Message]:
+        messages: List[raftmessage.Message] = []
+
+        if followers is None:
+            followers = self.create_followers_list()
+
+        for follower in followers:
+            message = raftmessage.AppendEntryRequest(
+                self.identifier,
+                follower,
+                *self.create_append_entries_arguments(follower),
+            )
+            messages.append(message)
+
+        return messages
+
+    def handle_leader_heartbeat(
+        self, source: int, target: int, followers: List[int]
+    ) -> Tuple[
+        List[raftmessage.Message], Optional[Tuple[raftrole.Role, raftrole.Role]]
+    ]:
+        """
+        Leader heartbeat. Send AppendEntries to all followers.
+        """
+        if self.role != raftrole.Role.LEADER:
+            raise Exception("Not able to generate leader heartbeat when not leader.")
+
+        return self.create_leader_heartbeats(followers), None
 
     def handle_append_entries_request(
         self,
@@ -256,6 +202,35 @@ class RaftState:
             )
         ], state_change["role_change"]
 
+    def update_indexes(self, target: int) -> Optional[int]:
+        assert self.next_index is not None
+        self.next_index[target] = len(self.log)
+
+        assert self.match_index is not None
+        self.match_index[target] = len(self.log) - 1
+
+        # Change to leader's commit_index is only relevant after a successful
+        # append entry response from follower.
+        match_index_values = sorted(
+            [value for value in self.match_index.values() if value is not None]
+        )
+        majority_count = self.count_majority()
+        null_count = self.count_null_votes()
+
+        # Require at least majority of next_index to be non-null.
+        if len(match_index_values) < majority_count:
+            return None
+
+        # Get median value with index corrected for null values
+        commit_index = match_index_values[majority_count - 1 - null_count]
+
+        # Require latest be entry from leader's current term.
+        if self.log[commit_index].term == self.current_term:
+            self.commit_index = commit_index
+
+        # Have commit_index return to allow unit tests.
+        return commit_index
+
     def handle_append_entries_response(
         self,
         source: int,
@@ -301,18 +276,31 @@ class RaftState:
             )
         ], state_change["role_change"]
 
-    def handle_leader_heartbeat(
-        self, source: int, target: int, followers: List[int]
-    ) -> Tuple[
-        List[raftmessage.Message], Optional[Tuple[raftrole.Role, raftrole.Role]]
-    ]:
-        """
-        Leader heartbeat. Send AppendEntries to all followers.
-        """
-        if self.role != raftrole.Role.LEADER:
-            raise Exception("Not able to generate leader heartbeat when not leader.")
+    ###
+    ###   CANDIDATE-RELATED HELPERS AND HANDLERS
+    ###
 
-        return self.create_leader_heartbeats(followers), None
+    def create_vote_requests(
+        self, followers: Optional[List[int]] = None
+    ) -> List[raftmessage.Message]:
+        messages: List[raftmessage.Message] = []
+
+        if followers is None:
+            followers = self.create_followers_list()
+
+        previous_term = self.log[-1].term if len(self.log) >= 0 else -1
+
+        for follower in followers:
+            message = raftmessage.RequestVoteRequest(
+                self.identifier,
+                follower,
+                self.current_term,
+                len(self.log) - 1,
+                previous_term,
+            )
+            messages.append(message)
+
+        return messages
 
     def handle_request_vote_request(
         self,
@@ -366,6 +354,32 @@ class RaftState:
             raftmessage.RequestVoteResponse(target, source, success, self.current_term)
         ], state_change["role_change"]
 
+    def count_majority(self) -> int:
+        return 1 + len(self.config) // 2
+
+    def count_self_votes(self) -> int:
+        assert self.current_votes is not None
+        return len(
+            [
+                identifier
+                for identifier in self.current_votes.values()
+                if identifier == self.identifier
+            ]
+        )
+
+    def count_null_votes(self) -> int:
+        assert self.current_votes is not None
+        return len(
+            [
+                identifier
+                for identifier in self.current_votes.values()
+                if identifier is None
+            ]
+        )
+
+    def has_won_election(self) -> bool:
+        return self.count_self_votes() >= self.count_majority()
+
     def handle_request_vote_response(
         self,
         source: int,
@@ -402,6 +416,10 @@ class RaftState:
 
         return [], state_change["role_change"]
 
+    ###
+    ###   CUSTOM HELPERS AND HANDLERS
+    ###
+
     def handle_text(
         self, source: int, target: int, text: str
     ) -> Tuple[
@@ -429,6 +447,10 @@ class RaftState:
         print(f"\n{text}\n{target} > ", end="")
         return [], None
 
+    ###
+    ###   PUBLIC INTERFACE TO HANDLERS
+    ###
+
     # TODO: Create message handler for timer.
     def handle_message(
         self, message: raftmessage.Message
@@ -439,14 +461,14 @@ class RaftState:
             case raftmessage.ClientLogAppend():
                 return self.handle_client_log_append(**vars(message))
 
+            case raftmessage.UpdateFollowers():
+                return self.handle_leader_heartbeat(**vars(message))
+
             case raftmessage.AppendEntryRequest():
                 return self.handle_append_entries_request(**vars(message))
 
             case raftmessage.AppendEntryResponse():
                 return self.handle_append_entries_response(**vars(message))
-
-            case raftmessage.UpdateFollowers():
-                return self.handle_leader_heartbeat(**vars(message))
 
             case raftmessage.RequestVoteRequest():
                 return self.handle_request_vote_request(**vars(message))

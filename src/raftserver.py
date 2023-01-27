@@ -41,16 +41,13 @@ class RaftServer:
 
                 response, role_change = self.state.handle_message(request)
 
-                followers = list(self.state.config.keys())
-                followers.remove(self.identifier)
-
                 if role_change == (raftrole.Role.CANDIDATE, raftrole.Role.LEADER):
                     assert len(response) == 0
-                    response += self.state.create_leader_heartbeats(followers)
+                    response += self.state.create_leader_heartbeats()
 
                 elif role_change == (raftrole.Role.FOLLOWER, raftrole.Role.CANDIDATE):
                     assert len(response) == 0
-                    response += self.state.create_vote_requests(followers)
+                    response += self.state.create_vote_requests()
 
                 self.send(response)
 

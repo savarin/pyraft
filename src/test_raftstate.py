@@ -412,7 +412,7 @@ def test_handle_vote_request(
     change_role_from_follower_to_candidate(
         candidate_state, candidate_state.current_term
     )
-    request = candidate_state.create_vote_requests([1, 2])
+    request = candidate_state.create_vote_requests()
 
     assert candidate_state.role == raftrole.Role.CANDIDATE
     assert candidate_state.current_term == 7
