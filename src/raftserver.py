@@ -7,6 +7,7 @@ import threading
 import raftconfig
 import raftmessage
 import raftnode
+import raftrole
 import raftstate
 
 
@@ -40,8 +41,16 @@ class RaftServer:
 
                 response, role_change = self.state.handle_message(request)
 
-                if role_change is not None:
-                    response += self.state.handle_role_change(role_change)
+                followers = list(self.state.config.keys())
+                followers.remove(self.identifier)
+
+                if role_change == (raftrole.Role.CANDIDATE, raftrole.Role.LEADER):
+                    assert len(response) == 0
+                    response += self.state.create_leader_heartbeats(followers)
+
+                elif role_change == (raftrole.Role.FOLLOWER, raftrole.Role.CANDIDATE):
+                    assert len(response) == 0
+                    response += self.state.create_vote_requests(followers)
 
                 self.send(response)
 

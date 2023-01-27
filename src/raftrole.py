@@ -67,6 +67,7 @@ class Role(enum.Enum):
     CANDIDATE = "CANDIDATE"
     FOLLOWER = "FOLLOWER"
     TIMER = "TIMER"
+    ELECTION_COMMISSION = "ELECTION_COMMISSION"
 
 
 class Operation(enum.Enum):
@@ -77,7 +78,7 @@ class Operation(enum.Enum):
 
 class StateChange(TypedDict):
     role_change: Optional[Tuple[Role, Role]]
-    term: int
+    current_term: int
     next_index: Operation
     match_index: Operation
     commit_index: Operation
@@ -98,97 +99,95 @@ def evaluate_role_change(
     - If timer is source, then change target from follower to candidate,
       increase term by one and set voted_for to self.
     """
+    current_term = target_term
+    voted_for = Operation.PASS
+    role_change = None
+
     match (source_role, target_role):
         # append entry request
         case (Role.LEADER, Role.FOLLOWER):
             if source_term > target_term:
-                target_term = source_term
+                current_term = source_term
                 voted_for = Operation.RESET_TO_NONE
                 role_change = None
 
         # append entry request, vote response
         case (Role.LEADER, Role.CANDIDATE):
             if source_term > target_term:
-                target_term = source_term
+                current_term = source_term
                 voted_for = Operation.RESET_TO_NONE
                 role_change = (Role.CANDIDATE, Role.FOLLOWER)
 
             elif source_term == target_term:
-                target_term = source_term
+                current_term = source_term
                 voted_for = Operation.PASS
                 role_change = (Role.CANDIDATE, Role.FOLLOWER)
 
         # append entry request
         case (Role.LEADER, Role.LEADER):
             if source_term > target_term:
-                target_term = source_term
+                current_term = source_term
                 voted_for = Operation.RESET_TO_NONE
                 role_change = (Role.LEADER, Role.FOLLOWER)
 
         # vote request
         case (Role.CANDIDATE, Role.FOLLOWER):
             if source_term > target_term:
-                target_term = source_term
+                current_term = source_term
                 voted_for = Operation.RESET_TO_NONE
                 role_change = None
 
         # vote request, vote response
         case (Role.CANDIDATE, Role.CANDIDATE):
             if source_term > target_term:
-                target_term = source_term
+                current_term = source_term
                 voted_for = Operation.RESET_TO_NONE
                 role_change = (Role.CANDIDATE, Role.FOLLOWER)
 
         # vote request
         case (Role.CANDIDATE, Role.LEADER):
             if source_term > target_term:
-                target_term = source_term
+                current_term = source_term
                 voted_for = Operation.RESET_TO_NONE
                 role_change = (Role.LEADER, Role.FOLLOWER)
 
         # response to target when target send pre-change
         case (Role.FOLLOWER, Role.FOLLOWER):
             if source_term > target_term:
-                target_term = source_term
+                current_term = source_term
                 voted_for = Operation.RESET_TO_NONE
                 role_change = None
 
         # vote response
         case (Role.FOLLOWER, Role.CANDIDATE):
             if source_term > target_term:
-                target_term = source_term
+                current_term = source_term
                 voted_for = Operation.RESET_TO_NONE
                 role_change = (Role.CANDIDATE, Role.FOLLOWER)
 
         # append entry response
         case (Role.FOLLOWER, Role.LEADER):
             if source_term > target_term:
-                target_term = source_term
+                current_term = source_term
                 voted_for = Operation.RESET_TO_NONE
                 role_change = (Role.LEADER, Role.FOLLOWER)
 
-        # timeout, relevant
+        # timeout
         case (Role.TIMER, Role.FOLLOWER):
-            target_term += 1
+            current_term = target_term + 1
             voted_for = Operation.INITIALIZE
             role_change = (Role.FOLLOWER, Role.CANDIDATE)
 
-        # timeout, not relevant
-        case (Role.TIMER, Role.FOLLOWER):
-            target_term = target_term
+        # wins election
+        case (Role.ELECTION_COMMISSION, Role.CANDIDATE):
+            current_term = target_term
             voted_for = Operation.PASS
-            role_change = None
-
-        # timeout, not relevant
-        case (Role.TIMER, Role.LEADER):
-            target_term = target_term
-            voted_for = Operation.PASS
-            role_change = None
+            role_change = (Role.CANDIDATE, Role.LEADER)
 
         case _:
-            raise Exception("Exhaustive switch error.")
+            raise Exception("Invalid role change enumeration.")
 
-    return role_change, target_term, voted_for
+    return role_change, current_term, voted_for
 
 
 def evaluate_operations_from_role_change(
@@ -231,10 +230,13 @@ def evaluate_operations_from_role_change(
     return next_index, match_index, commit_index, current_votes
 
 
-def enumerate_changes(
-    source_role: Role, source_term: int, target_role: Role, target_term: int
+def enumerate_state_change(
+    source_role: Role,
+    source_term: int,
+    target_role: Role,
+    target_term: int,
 ) -> StateChange:
-    role_change, target_term, voted_for = evaluate_role_change(
+    role_change, current_term, voted_for = evaluate_role_change(
         source_role, source_term, target_role, target_term
     )
 
@@ -247,7 +249,7 @@ def enumerate_changes(
 
     return dict(
         role_change=role_change,
-        term=target_term,
+        current_term=current_term,
         next_index=next_index,
         match_index=match_index,
         commit_index=commit_index,
