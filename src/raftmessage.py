@@ -106,6 +106,7 @@ def encode_message(message: Message) -> str:
 
         case RequestVoteResponse():
             attributes["message_type"] = MessageType.VOTE_RESPONSE.value
+            attributes["success"] = int(attributes["success"])
 
         case _:
             raise Exception(
@@ -142,12 +143,13 @@ def decode_message(string: str) -> Message:
             return AppendEntryResponse(**attributes)
 
         case MessageType.RUN_ELECTION:
-            return UpdateFollowers(**attributes)
+            return RunElection(**attributes)
 
         case MessageType.VOTE_REQUEST:
             return RequestVoteRequest(**attributes)
 
         case MessageType.VOTE_RESPONSE:
+            attributes["success"] = bool(attributes["success"])
             return RequestVoteResponse(**attributes)
 
         case MessageType.TEXT:

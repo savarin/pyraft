@@ -114,7 +114,7 @@ class RaftState:
 
         assert next_index is not None
         previous_index = next_index - 1
-        previous_term = self.log[previous_index].term if previous_index >= 0 else -1
+        previous_term = self.log[previous_index].term if len(self.log) > 0 and previous_index >= 0 else -1
 
         assert next_index is not None
         return (
@@ -164,7 +164,7 @@ class RaftState:
             return None
 
         # Require latest be entry from leader's current term.
-        if self.log[potential_commit_index].term == self.current_term:
+        if len(self.log) > 0 and self.log[potential_commit_index].term == self.current_term:
             self.commit_index = potential_commit_index
 
     def handle_leader_heartbeat(
@@ -303,7 +303,7 @@ class RaftState:
         if followers is None:
             followers = self.create_followers_list()
 
-        previous_term = self.log[-1].term if len(self.log) >= 0 else -1
+        previous_term = self.log[-1].term if len(self.log) > 0 else -1
 
         for follower in followers:
             message = raftmessage.RequestVoteRequest(
@@ -368,7 +368,7 @@ class RaftState:
             success = False
 
         # Require candidate have last entry having at least the same term.
-        elif last_log_term < self.log[-1].term:
+        elif len(self.log) > 0 and last_log_term < self.log[-1].term:
             success = False
 
         # Require candidate have at least same log length.
