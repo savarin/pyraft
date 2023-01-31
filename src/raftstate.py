@@ -22,6 +22,7 @@ class RaftState:
         self.next_index: Optional[Dict[int, int]] = None
         self.match_index: Optional[Dict[int, Optional[int]]] = None
         self.commit_index: int = -1
+        self.has_followers: Optional[bool] = None
         self.voted_for: Optional[int] = None
         self.current_votes: Optional[Dict[int, Optional[int]]] = None
         self.config: Dict[int, Tuple[str, int]] = raftconfig.ADDRESS_BY_IDENTIFIER
@@ -65,6 +66,11 @@ class RaftState:
             self.commit_index = -1
         elif state_change["commit_index"] == raftrole.Operation.INITIALIZE:
             raise Exception("Invalid initialization operation for commit index.")
+
+        if state_change["has_followers"] == raftrole.Operation.RESET_TO_NONE:
+            self.has_followers = None
+        elif state_change["has_followers"] == raftrole.Operation.INITIALIZE:
+            self.has_followers = False
 
         if state_change["voted_for"] == raftrole.Operation.RESET_TO_NONE:
             self.voted_for = None
@@ -114,7 +120,11 @@ class RaftState:
 
         assert next_index is not None
         previous_index = next_index - 1
-        previous_term = self.log[previous_index].term if len(self.log) > 0 and previous_index >= 0 else -1
+        previous_term = (
+            self.log[previous_index].term
+            if len(self.log) > 0 and previous_index >= 0
+            else -1
+        )
 
         assert next_index is not None
         return (
@@ -164,7 +174,10 @@ class RaftState:
             return None
 
         # Require latest be entry from leader's current term.
-        if len(self.log) > 0 and self.log[potential_commit_index].term == self.current_term:
+        if (
+            len(self.log) > 0
+            and self.log[potential_commit_index].term == self.current_term
+        ):
             self.commit_index = potential_commit_index
 
     def handle_leader_heartbeat(
@@ -267,6 +280,10 @@ class RaftState:
         # If successful, update indexes.
         if success:
             self.update_indexes(source)
+
+            assert self.has_followers is not None
+            self.has_followers = True
+
             return [], state_change["role_change"]
 
         # If not successful, retry with earlier entries.
@@ -530,3 +547,51 @@ def change_role_from_candidate_to_leader(
         current_term or state.current_term,
     )
     state.implement_state_change(state_change)
+
+
+def change_role_from_leader_to_follower(
+    state: RaftState, current_term: Optional[int] = None
+) -> None:
+    state_change = raftrole.enumerate_state_change(
+        raftrole.Role.CONSTITUTION,
+        current_term or state.current_term,
+        raftrole.Role.LEADER,
+        current_term or state.current_term,
+    )
+    state.implement_state_change(state_change)
+
+
+def change_state_on_timeout(state: RaftState) -> Optional[raftmessage.Message]:
+    followers = state.create_followers_list()
+    message: Optional[raftmessage.Message] = None
+
+    match state.role:
+        case raftrole.Role.FOLLOWER:
+            change_role_from_follower_to_candidate(state)
+            message = raftmessage.RunElection(
+                state.identifier, state.identifier, followers
+            )
+
+        case raftrole.Role.CANDIDATE:
+            state.current_term += 1
+            message = raftmessage.RunElection(
+                state.identifier, state.identifier, followers
+            )
+
+        case raftrole.Role.LEADER:
+            # If response received from previous heartbeat, send out another
+            # heartbeat.
+            assert state.has_followers is not None
+
+            if state.has_followers:
+                message = raftmessage.UpdateFollowers(
+                    state.identifier, state.identifier, followers
+                )
+
+            # If no response received, step down as leader.
+            else:
+                change_role_from_leader_to_follower(state)
+
+            state.has_followers = False
+
+    return message

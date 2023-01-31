@@ -70,6 +70,7 @@ class Role(enum.Enum):
     FOLLOWER = "FOLLOWER"
     TIMER = "TIMER"
     ELECTION_COMMISSION = "ELECTION_COMMISSION"
+    CONSTITUTION = "CONSTITUTION"
 
 
 class Operation(enum.Enum):
@@ -84,6 +85,7 @@ class StateChange(TypedDict):
     next_index: Operation
     match_index: Operation
     commit_index: Operation
+    has_followers: Operation
     voted_for: Operation
     current_votes: Operation
 
@@ -190,6 +192,12 @@ def evaluate_role_change(
             voted_for = Operation.PASS
             role_change = (Role.CANDIDATE, Role.LEADER)
 
+        # no append entry responses
+        case (Role.CONSTITUTION, Role.LEADER):
+            current_term = target_term
+            voted_for = Operation.PASS
+            role_change = (Role.LEADER, Role.FOLLOWER)
+
         case _:
             raise Exception("Invalid role change enumeration.")
 
@@ -198,7 +206,7 @@ def evaluate_role_change(
 
 def evaluate_operations(
     role_change: Optional[Tuple[Role, Role]]
-) -> Tuple[Operation, Operation, Operation, Operation]:
+) -> Tuple[Operation, Operation, Operation, Operation, Operation]:
     """
     Changes to attributes on the back of role changes.
 
@@ -218,36 +226,41 @@ def evaluate_operations(
             next_index = Operation.PASS
             match_index = Operation.PASS
             commit_index = Operation.PASS
+            has_followers = Operation.PASS
             current_votes = Operation.INITIALIZE
 
         case (Role.CANDIDATE, Role.LEADER):
             next_index = Operation.INITIALIZE
             match_index = Operation.INITIALIZE
             commit_index = Operation.PASS
+            has_followers = Operation.INITIALIZE
             current_votes = Operation.PASS
 
         case (Role.LEADER, Role.FOLLOWER):
             next_index = Operation.RESET_TO_NONE
             match_index = Operation.RESET_TO_NONE
             commit_index = Operation.RESET_TO_NONE
+            has_followers = Operation.RESET_TO_NONE
             current_votes = Operation.RESET_TO_NONE
 
         case (Role.CANDIDATE, Role.FOLLOWER):
             next_index = Operation.PASS
             match_index = Operation.PASS
             commit_index = Operation.PASS
+            has_followers = Operation.PASS
             current_votes = Operation.RESET_TO_NONE
 
         case None:
             next_index = Operation.PASS
             match_index = Operation.PASS
             commit_index = Operation.PASS
+            has_followers = Operation.PASS
             current_votes = Operation.PASS
 
         case _:
             raise Exception("Invalid state change error.")
 
-    return next_index, match_index, commit_index, current_votes
+    return next_index, match_index, commit_index, has_followers, current_votes
 
 
 def enumerate_state_change(
@@ -260,9 +273,13 @@ def enumerate_state_change(
         source_role, source_term, target_role, target_term
     )
 
-    next_index, match_index, commit_index, current_votes = evaluate_operations(
-        role_change
-    )
+    (
+        next_index,
+        match_index,
+        commit_index,
+        has_followers,
+        current_votes,
+    ) = evaluate_operations(role_change)
 
     return dict(
         role_change=role_change,
@@ -270,6 +287,7 @@ def enumerate_state_change(
         next_index=next_index,
         match_index=match_index,
         commit_index=commit_index,
+        has_followers=has_followers,
         voted_for=voted_for,
         current_votes=current_votes,
     )
