@@ -80,7 +80,7 @@ def test_update_indexes(paper_log: List[raftlog.LogEntry]) -> None:
     assert non_null_match_index_count == 1
     assert potential_commit_index == 9
 
-    leader_state.handle_client_log_append(0, 0, "10")
+    leader_state.handle_client_log_append(0, 0, "6")
     assert leader_state.next_index == {0: 11, 1: 10, 2: 10}
     assert leader_state.match_index == {0: 10, 1: 9, 2: None}
     assert leader_state.commit_index == -1
@@ -125,14 +125,14 @@ def test_handle_append_entries_request(
     )
 
     response, _ = follower_state.handle_append_entries_request(
-        0, 1, 6, 8, 6, [raftlog.LogEntry(6, "9")], -1
+        0, 1, 6, 8, 6, [raftlog.LogEntry(6, "6")], -1
     )
     assert isinstance(response[0], raftmessage.AppendEntryResponse)
     assert response[0].success
     assert response[0].entries_length == 1
 
     response, _ = follower_state.handle_append_entries_request(
-        0, 1, 6, 10, 6, [raftlog.LogEntry(6, "11")], -1
+        0, 1, 6, 10, 6, [raftlog.LogEntry(6, "6")], -1
     )
     assert isinstance(response[0], raftmessage.AppendEntryResponse)
     assert not response[0].success
@@ -147,7 +147,7 @@ def test_handle_append_entries_response(paper_log: List[raftlog.LogEntry]) -> No
     assert isinstance(response[0], raftmessage.AppendEntryRequest)
     assert response[0].previous_index == 8
     assert response[0].previous_term == 6
-    assert response[0].entries == [raftlog.LogEntry(6, "9")]
+    assert response[0].entries == [raftlog.LogEntry(6, "6")]
 
     response, _ = leader_state.handle_append_entries_response(1, 0, 6, True, 1)
     assert len(response) == 0
