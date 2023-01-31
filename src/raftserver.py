@@ -69,29 +69,36 @@ class RaftServer:
                     end="",
                 )
 
-                # If receive leader heartbeat or follower vote, set reset flag
-                # to False to disable state change in the current cycle.
-                if isinstance(request, raftmessage.AppendEntryRequest) or isinstance(
-                    request, raftmessage.RequestVoteResponse
-                ):
-                    self.reset = False
+                # If receive leader heartbeat or vote request/response, set
+                # reset flag to False to disable follower role change in the
+                # current cycle.
+                match (self.state.role, type(request)):
+                    case (raftrole.Role.FOLLOWER, raftmessage.AppendEntryRequest):
+                        self.reset = False
+
+                    case (raftrole.Role.FOLLOWER, raftmessage.RequestVoteRequest):
+                        self.reset = False
+
+                    case (raftrole.Role.CANDIDATE, raftmessage.RequestVoteResponse):
+                        self.reset = False
 
                 if not isinstance(request, raftmessage.Text):
                     print(self.color() + f"\n{request.target} > ", end="")
 
                 response, role_change = self.state.handle_message(request)
 
-                if role_change == (raftrole.Role.CANDIDATE, raftrole.Role.LEADER):
-                    assert len(response) == 0
-                    response += self.state.handle_leader_heartbeat(
-                        self.identifier, self.identifier
-                    )[0]
+                match role_change:
+                    case (raftrole.Role.CANDIDATE, raftrole.Role.LEADER):
+                        assert len(response) == 0
+                        response += self.state.handle_leader_heartbeat(
+                            self.identifier, self.identifier
+                        )[0]
 
-                elif role_change == (raftrole.Role.FOLLOWER, raftrole.Role.CANDIDATE):
-                    assert len(response) == 0
-                    response += self.state.handle_candidate_solicitation(
-                        self.identifier, self.identifier
-                    )[0]
+                    case (raftrole.Role.FOLLOWER, raftrole.Role.CANDIDATE):
+                        assert len(response) == 0
+                        response += self.state.handle_candidate_solicitation(
+                            self.identifier, self.identifier
+                        )[0]
 
                 self.send(response)
 

@@ -47,41 +47,49 @@ class RaftState:
 
         self.current_term = state_change["current_term"]
 
-        if state_change["next_index"] == raftrole.Operation.RESET_TO_NONE:
-            self.next_index = None
-        elif state_change["next_index"] == raftrole.Operation.INITIALIZE:
-            self.next_index = {identifier: len(self.log) for identifier in self.config}
+        match state_change["next_index"]:
+            case raftrole.Operation.RESET_TO_NONE:
+                self.next_index = None
+            case raftrole.Operation.INITIALIZE:
+                self.next_index = {
+                    identifier: len(self.log) for identifier in self.config
+                }
 
-        if state_change["match_index"] == raftrole.Operation.RESET_TO_NONE:
-            self.match_index = None
-        elif state_change["match_index"] == raftrole.Operation.INITIALIZE:
-            self.match_index = {identifier: None for identifier in self.config}
+        match state_change["match_index"]:
+            case raftrole.Operation.RESET_TO_NONE:
+                self.match_index = None
+            case raftrole.Operation.INITIALIZE:
+                self.match_index = {identifier: None for identifier in self.config}
 
         # Exception to RESET_TO_NONE, where reset is to -1. This is to simplify
         # message passing since integers are handled in the encoding/decoding
         # step, but None needs an extra step. Setting to -1 skip this step, but
         # care is needed at call sites to make sure change is via assignment
         # rather than addition.
-        if state_change["commit_index"] == raftrole.Operation.RESET_TO_NONE:
-            self.commit_index = -1
-        elif state_change["commit_index"] == raftrole.Operation.INITIALIZE:
-            raise Exception("Invalid initialization operation for commit index.")
+        match state_change["commit_index"]:
+            case raftrole.Operation.RESET_TO_NONE:
+                self.commit_index = -1
+            case raftrole.Operation.INITIALIZE:
+                raise Exception("Invalid initialization operation for commit index.")
 
-        if state_change["has_followers"] == raftrole.Operation.RESET_TO_NONE:
-            self.has_followers = None
-        elif state_change["has_followers"] == raftrole.Operation.INITIALIZE:
-            self.has_followers = False
+        match state_change["has_followers"]:
+            case raftrole.Operation.RESET_TO_NONE:
+                self.has_followers = None
+            case raftrole.Operation.INITIALIZE:
+                self.has_followers = False
 
-        if state_change["voted_for"] == raftrole.Operation.RESET_TO_NONE:
-            self.voted_for = None
-        elif state_change["voted_for"] == raftrole.Operation.INITIALIZE:
-            self.voted_for = self.identifier
+        match state_change["voted_for"]:
+            case raftrole.Operation.RESET_TO_NONE:
+                self.voted_for = None
+            case raftrole.Operation.INITIALIZE:
+                self.voted_for = self.identifier
 
-        if state_change["current_votes"] == raftrole.Operation.RESET_TO_NONE:
-            self.current_votes = None
-        elif state_change["current_votes"] == raftrole.Operation.INITIALIZE:
-            self.current_votes = {identifier: None for identifier in self.config}
-            self.current_votes[self.identifier] = self.identifier
+        match state_change["current_votes"]:
+            case raftrole.Operation.RESET_TO_NONE:
+                self.current_votes = None
+            case raftrole.Operation.INITIALIZE:
+                self.current_votes = {identifier: None for identifier in self.config}
+                self.current_votes[self.identifier] = self.identifier
 
     ###
     ###   CLIENT-RELATED HELPERS AND HANDLERS
@@ -384,12 +392,12 @@ class RaftState:
         if current_term < self.current_term:
             success = False
 
-        # Require candidate have last entry having at least the same term.
-        elif len(self.log) > 0 and last_log_term < self.log[-1].term:
-            success = False
-
         # Require candidate have at least same log length.
         elif last_log_index < len(self.log) - 1:
+            success = False
+
+        # Require candidate have last entry having at least the same term.
+        elif len(self.log) > 0 and last_log_term < self.log[-1].term:
             success = False
 
         else:
