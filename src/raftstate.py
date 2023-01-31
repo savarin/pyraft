@@ -26,6 +26,7 @@ class RaftState:
         self.voted_for: Optional[int] = None
         self.current_votes: Optional[Dict[int, Optional[int]]] = None
         self.config: Dict[int, Tuple[str, int]] = raftconfig.ADDRESS_BY_IDENTIFIER
+        self.experimental_mode: bool = False
 
     ###
     ###   MULTI-PURPOSE HELPERS
@@ -60,6 +61,7 @@ class RaftState:
                 self.match_index = None
             case raftrole.Operation.INITIALIZE:
                 self.match_index = {identifier: None for identifier in self.config}
+                self.match_index[self.identifier] = len(self.log) - 1
 
         # Exception to RESET_TO_NONE, where reset is to -1. This is to simplify
         # message passing since integers are handled in the encoding/decoding
@@ -162,7 +164,11 @@ class RaftState:
 
         # Get median value with index corrected for null values
         median_match_index = self.count_majority() - 1 - self.count_null_match_index()
-        potential_commit_index = non_null_match_index_values[median_match_index]
+
+        if 0 <= median_match_index < len(non_null_match_index_values):
+            potential_commit_index = non_null_match_index_values[median_match_index]
+        else:
+            potential_commit_index = -1
 
         return non_null_match_index_count, potential_commit_index
 
@@ -185,7 +191,7 @@ class RaftState:
         if (
             len(self.log) > 0
             and self.log[potential_commit_index].term == self.current_term
-        ):
+        ) or self.experimental_mode:
             self.commit_index = potential_commit_index
 
     def handle_leader_heartbeat(

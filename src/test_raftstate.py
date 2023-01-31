@@ -55,32 +55,59 @@ def init_raft_states(
     return leader_state, follower_a_state, follower_b_state, messages
 
 
+def init_commit_states(
+    logs: List[List[raftlog.LogEntry]],
+    experimental_mode: bool,
+    config: Dict[int, Tuple[str, int]],
+    commit_index: int,
+) -> Tuple[
+    raftstate.RaftState,
+    raftstate.RaftState,
+    raftstate.RaftState,
+    raftstate.RaftState,
+    raftstate.RaftState,
+]:
+
+    state_1, _ = init_raft_state(1, logs[0], raftrole.Role.FOLLOWER, 2)
+    state_2, _ = init_raft_state(2, logs[1], raftrole.Role.FOLLOWER, 2)
+    state_3, _ = init_raft_state(3, logs[2], raftrole.Role.FOLLOWER, 2)
+    state_4, _ = init_raft_state(4, logs[3], raftrole.Role.FOLLOWER, 2)
+    state_5, _ = init_raft_state(5, logs[4], raftrole.Role.FOLLOWER, 2)
+
+    for state in [state_1, state_2, state_3, state_4, state_5]:
+        state.experimental_mode = experimental_mode
+        state.config = config
+        state.commit_index = commit_index
+
+    return state_1, state_2, state_3, state_4, state_5
+
+
 def test_update_indexes(paper_log: List[raftlog.LogEntry]) -> None:
     leader_state, _ = init_raft_state(
         0,
         paper_log,
         raftrole.Role.LEADER,
-        6,
+        7,
     )
 
     assert leader_state.next_index is not None
     assert leader_state.next_index == {0: 10, 1: 10, 2: 10}
-    assert leader_state.match_index == {0: None, 1: None, 2: None}
+    assert leader_state.match_index == {0: 9, 1: None, 2: None}
     assert leader_state.commit_index == -1
 
     leader_state.update_indexes(1)
     assert leader_state.next_index == {0: 10, 1: 10, 2: 10}
-    assert leader_state.match_index == {0: None, 1: 9, 2: None}
+    assert leader_state.match_index == {0: 9, 1: 9, 2: None}
     assert leader_state.commit_index == -1
 
     (
         non_null_match_index_count,
         potential_commit_index,
     ) = leader_state.get_index_metrics()
-    assert non_null_match_index_count == 1
+    assert non_null_match_index_count == 2
     assert potential_commit_index == 9
 
-    leader_state.handle_client_log_append(0, 0, "6")
+    leader_state.handle_client_log_append(0, 0, "7")
     assert leader_state.next_index == {0: 11, 1: 10, 2: 10}
     assert leader_state.match_index == {0: 10, 1: 9, 2: None}
     assert leader_state.commit_index == -1
@@ -315,20 +342,20 @@ def test_consensus(
     )
 
     assert leader_state.next_index == {0: 10, 1: 10, 2: 10}
-    assert leader_state.match_index == {0: None, 1: None, 2: None}
+    assert leader_state.match_index == {0: 9, 1: None, 2: None}
     assert leader_state.commit_index == -1
 
     response_a, _ = follower_a_state.handle_message(request[0])
     request_a, _ = leader_state.handle_message(response_a[0])
     assert leader_state.next_index == {0: 10, 1: 9, 2: 10}
-    assert leader_state.match_index == {0: None, 1: None, 2: None}
+    assert leader_state.match_index == {0: 9, 1: None, 2: None}
     assert leader_state.commit_index == -1
 
     response_a, _ = follower_a_state.handle_message(request_a[0])
     leader_state.handle_message(response_a[0])
     assert leader_state.next_index == {0: 10, 1: 10, 2: 10}
-    assert leader_state.match_index == {0: None, 1: 9, 2: None}
-    assert leader_state.commit_index == -1
+    assert leader_state.match_index == {0: 9, 1: 9, 2: None}
+    assert leader_state.commit_index == 9
 
     response_b, _ = follower_b_state.handle_message(request[1])
 
@@ -336,14 +363,14 @@ def test_consensus(
         request_b, _ = leader_state.handle_message(response_b[0])
 
         assert leader_state.next_index == {0: 10, 1: 10, 2: 9 - i}
-        assert leader_state.match_index == {0: None, 1: 9, 2: None}
-        assert leader_state.commit_index == -1
+        assert leader_state.match_index == {0: 9, 1: 9, 2: None}
+        assert leader_state.commit_index == 9
 
         response_b, _ = follower_b_state.handle_message(request_b[0])
 
     leader_state.handle_message(response_b[0])
     assert leader_state.next_index == {0: 10, 1: 10, 2: 10}
-    assert leader_state.match_index == {0: None, 1: 9, 2: 9}
+    assert leader_state.match_index == {0: 9, 1: 9, 2: 9}
     assert leader_state.commit_index == 9
 
     request, _ = leader_state.handle_leader_heartbeat(0, 0, [1, 2])
@@ -474,3 +501,149 @@ def test_handle_vote_response(
     assert candidate_state.role == raftrole.Role.LEADER
     assert candidate_state.current_term == 7
     assert candidate_state.voted_for == 0
+
+
+def test_commit_with_requirement() -> None:
+    logs: List[List[raftlog.LogEntry]] = [
+        [raftlog.LogEntry(1, "1"), raftlog.LogEntry(2, "2")],
+        [raftlog.LogEntry(1, "1"), raftlog.LogEntry(2, "2")],
+        [raftlog.LogEntry(1, "1")],
+        [raftlog.LogEntry(1, "1")],
+        [raftlog.LogEntry(1, "1")],
+    ]
+    config: Dict[int, Tuple[str, int]] = {(i + 1): ("", i) for i in range(5)}
+    experimental_mode: bool = False
+
+    # (a) starting state
+    state_1, state_2, state_3, state_4, state_5 = init_commit_states(
+        logs, experimental_mode, config, 0
+    )
+
+    # (b) elect 5 as leader and append entry
+    raftstate.change_role_from_follower_to_candidate(state_5)
+    raftstate.change_role_from_candidate_to_leader(state_5)
+    state_5.handle_client_log_append(5, 5, "3")
+    state_5.handle_client_log_append(5, 5, "3")
+    state_5.handle_client_log_append(5, 5, "3")
+
+    # (c) election with candidate 1 with no winner in a split network, then
+    # elect 1 as leader and append entry
+    raftstate.change_role_from_follower_to_candidate(state_1)
+    state_1.current_term += 1
+    raftstate.change_role_from_candidate_to_leader(state_1)
+
+    for _ in range(2):
+        messages, _ = state_1.handle_leader_heartbeat(1, 1)
+
+        for i, state in enumerate([state_2, state_3, state_4, state_5]):
+            if i in [2, 3]:
+                continue
+
+            request = [messages[i]]
+
+            while len(request) > 0:
+                response, _ = state.handle_message(request[0])
+                request, _ = state_1.handle_message(response[0])
+
+    assert len(state_2.log) == 2
+    assert state_2.log[1] == raftlog.LogEntry(2, "2")
+    assert state_2.commit_index == 0
+
+    prior_log = state_2.log.copy()
+    prior_commit_index = state_2.commit_index
+
+    # (d) crash 5, election with candidate 5 with no winner in a split network,
+    # then elect 5 as leader
+    raftstate.change_role_from_leader_to_follower(state_5)
+    raftstate.change_role_from_follower_to_candidate(state_5)
+    state_5.current_term += 1
+    raftstate.change_role_from_candidate_to_leader(state_5)
+
+    for _ in range(3):
+        messages, _ = state_5.handle_leader_heartbeat(1, 1)
+
+        for i, state in enumerate([state_1, state_2, state_3, state_4]):
+            request = [messages[i]]
+
+            while len(request) > 0:
+                response, _ = state.handle_message(request[0])
+                request, _ = state_5.handle_message(response[0])
+
+    assert len(state_2.log) == 4
+    assert state_2.log[1] == raftlog.LogEntry(3, "3")
+    assert state_2.commit_index == 0
+
+    assert prior_log[prior_commit_index] == state_2.log[prior_commit_index]
+
+
+def test_commit_without_requirement() -> None:
+    logs: List[List[raftlog.LogEntry]] = [
+        [raftlog.LogEntry(1, "1"), raftlog.LogEntry(2, "2")],
+        [raftlog.LogEntry(1, "1"), raftlog.LogEntry(2, "2")],
+        [raftlog.LogEntry(1, "1")],
+        [raftlog.LogEntry(1, "1")],
+        [raftlog.LogEntry(1, "1")],
+    ]
+    config: Dict[int, Tuple[str, int]] = {(i + 1): ("", i) for i in range(5)}
+    experimental_mode: bool = True
+
+    # (a) starting state
+    state_1, state_2, state_3, state_4, state_5 = init_commit_states(
+        logs, experimental_mode, config, 0
+    )
+
+    # (b) elect 5 as leader and append entry
+    raftstate.change_role_from_follower_to_candidate(state_5)
+    raftstate.change_role_from_candidate_to_leader(state_5)
+    state_5.handle_client_log_append(5, 5, "3")
+    state_5.handle_client_log_append(5, 5, "3")
+    state_5.handle_client_log_append(5, 5, "3")
+
+    # (c) election with candidate 1 with no winner in a split network, then
+    # elect 1 as leader and append entry
+    raftstate.change_role_from_follower_to_candidate(state_1)
+    state_1.current_term += 1
+    raftstate.change_role_from_candidate_to_leader(state_1)
+
+    for _ in range(2):
+        messages, _ = state_1.handle_leader_heartbeat(1, 1)
+
+        for i, state in enumerate([state_2, state_3, state_4, state_5]):
+            if i in [2, 3]:
+                continue
+
+            request = [messages[i]]
+
+            while len(request) > 0:
+                response, _ = state.handle_message(request[0])
+                request, _ = state_1.handle_message(response[0])
+
+    assert len(state_2.log) == 2
+    assert state_2.log[1] == raftlog.LogEntry(2, "2")
+    assert state_2.commit_index == 1
+
+    prior_log = state_2.log.copy()
+    prior_commit_index = state_2.commit_index
+
+    # (d) crash 5, election with candidate 5 with no winner in a split network,
+    # then elect 5 as leader
+    raftstate.change_role_from_leader_to_follower(state_5)
+    raftstate.change_role_from_follower_to_candidate(state_5)
+    state_5.current_term += 1
+    raftstate.change_role_from_candidate_to_leader(state_5)
+
+    for _ in range(2):
+        messages, _ = state_5.handle_leader_heartbeat(1, 1)
+
+        for i, state in enumerate([state_1, state_2, state_3, state_4]):
+            request = [messages[i]]
+
+            while len(request) > 0:
+                response, _ = state.handle_message(request[0])
+                request, _ = state_5.handle_message(response[0])
+
+    assert len(state_2.log) == 4
+    assert state_2.log[1] == raftlog.LogEntry(3, "3")
+    assert state_2.commit_index == 3
+
+    assert prior_log[prior_commit_index] != state_2.log[prior_commit_index]
