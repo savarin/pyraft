@@ -26,32 +26,14 @@ class LogEntry:
         return f"LogEntry({str(self.term)}, '{self.item}')"
 
 
-def append_entry(
-    log: List[LogEntry], previous_index: int, previous_term: int, entry: LogEntry
-) -> bool:
+def is_equal_entry(log: List[LogEntry], previous_index: int, entry: LogEntry) -> bool:
     """
-    Helper to add entry one-by-one. Choose index starting from 0.
-
-    Suppose have 3 elements. Either append starting at previous_index 2 or
-    modify at 0 or 1, returning True. Returns False if try to previous_index
-    3 or more.
-
-    [a b c]  d e f
-     ^ ^ ^   ^ ^ ^
-     0 1 2   3 4 5
-
-    If log is empty, the log is simply replaced as per append_entries.
+    Check entries are equal.
     """
-    if 0 <= previous_index < len(log):
-        if previous_index < len(log) - 1:
-            log[previous_index + 1] = entry
-            return True
+    if previous_index < len(log) - 1 and log[previous_index + 1] != entry:
+        return False
 
-        elif previous_index == len(log) - 1:
-            log.append(entry)
-            return True
-
-    return False
+    return True
 
 
 def append_entries(
@@ -64,30 +46,23 @@ def append_entries(
     if previous_index >= len(log):
         return False
 
-    elif 0 <= previous_index < len(log):
-        # Check term number of previous entry matches previous_term.
-        if log[previous_index].term != previous_term:
-            return False
-
-        # If term number of existing entry is less than term of entry to be
-        # replaced, remove that entry and following entries. Discussed in
-        # Figure 2 of the Raft paper, conflict resolved by the later term as
-        # there can only be one leader.
-        if previous_index + 1 <= len(log) - 1 and len(entries) > 0:
-            if log[previous_index].term < entries[0].term:
-                for _ in range(len(log) - previous_index - 2):
-                    log.pop()
-
-    # Require appends to the start of the log is to an empty log.
-    if previous_index == -1:
-        if len(log) == 0:
-            log += entries
-            return True
-
+    # Check term number of previous entry matches previous_term.
+    if previous_index >= 0 and log[previous_index].term != previous_term:
         return False
 
+    # If term number of existing entry is less than term of entry to be
+    # replaced, remove that entry and following entries. Discussed in
+    # Figure 2 of the Raft paper, conflict resolved by the later term as
+    # there can only be one leader.
+    for n, entry in enumerate(entries, start=previous_index + 1):
+        if n < len(log) and log[n].term != entry.term:
+            del log[n:]
+            break
+
     for i, entry in enumerate(entries):
-        if not append_entry(log, previous_index + i, previous_term, entry):
+        if not is_equal_entry(log, previous_index + i, entry):
             return False
+
+    log += entries[len(log) - previous_index - 1 :]
 
     return True
