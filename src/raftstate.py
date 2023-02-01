@@ -110,10 +110,8 @@ class RaftState:
 
         self.log.append(raftlog.LogEntry(self.current_term, item))
 
-        assert self.next_index is not None
+        assert self.next_index is not None and self.match_index is not None
         self.next_index[target] = len(self.log)
-
-        assert self.match_index is not None
         self.match_index[target] = len(self.log) - 1
 
         return []
@@ -136,7 +134,6 @@ class RaftState:
             else -1
         )
 
-        assert next_index is not None
         return (
             self.current_term,
             previous_index,
@@ -167,16 +164,15 @@ class RaftState:
 
         if 0 <= median_match_index < len(non_null_match_index_values):
             potential_commit_index = non_null_match_index_values[median_match_index]
+
         else:
             potential_commit_index = -1
 
         return non_null_match_index_count, potential_commit_index
 
     def update_indexes(self, target: int, entries_length: int) -> None:
-        assert self.next_index is not None
+        assert self.next_index is not None and self.match_index is not None
         self.next_index[target] += entries_length
-
-        assert self.match_index is not None
         self.match_index[target] = self.next_index[target] - 1
 
         # Change to leader's commit_index is only relevant after a successful
@@ -188,10 +184,12 @@ class RaftState:
             return None
 
         # Require latest be entry from leader's current term.
-        if (
+        update_commit_index = (
             len(self.log) > 0
             and self.log[potential_commit_index].term == self.current_term
-        ) or self.experimental_mode:
+        )
+
+        if update_commit_index or self.experimental_mode:
             self.commit_index = potential_commit_index
 
     def handle_leader_heartbeat(
@@ -206,14 +204,9 @@ class RaftState:
         if self.role != raftrole.Role.LEADER:
             raise Exception("Not able to generate leader heartbeat when not leader.")
 
-        if source is None:
-            source = self.identifier
-
-        if target is None:
-            target = self.identifier
-
-        if followers is None:
-            followers = self.create_followers_list()
+        source = source or self.identifier
+        target = target or self.identifier
+        followers = followers or self.create_followers_list()
 
         messages: List[raftmessage.Message] = []
 
@@ -304,11 +297,8 @@ class RaftState:
             return []
 
         # If not successful, retry with earlier entries.
-        assert self.next_index is not None
-        next_index = self.next_index[source]
-
-        assert next_index is not None
-        self.next_index[source] = next_index - 1
+        assert self.next_index is not None and self.next_index[source] is not None
+        self.next_index[source] = self.next_index[source] - 1
 
         return [
             raftmessage.AppendEntryRequest(
@@ -334,14 +324,9 @@ class RaftState:
         if self.role != raftrole.Role.CANDIDATE:
             raise Exception("Not able to solicit votes when not candidate.")
 
-        if source is None:
-            source = self.identifier
-
-        if target is None:
-            target = self.identifier
-
-        if followers is None:
-            followers = self.create_followers_list()
+        source = source or self.identifier
+        target = target or self.identifier
+        followers = followers or self.create_followers_list()
 
         messages: List[raftmessage.Message] = []
 
@@ -587,22 +572,16 @@ def change_role(
     )
 
     role_change = state_change["role_change"]
-
-    assert role_change is not None
-    assert role_change[0] == from_role
-    assert role_change[1] == to_role
+    assert role_change == (from_role, to_role)
 
     state.implement_state_change(state_change)
-
     return role_change
 
 
 def change_state_on_timeout(state: RaftState) -> raftmessage.Message:
-    message: Optional[raftmessage.Message] = None
-
     match state.role:
         case raftrole.Role.FOLLOWER:
-            message = raftmessage.RoleChange(
+            return raftmessage.RoleChange(
                 state.identifier,
                 state.identifier,
                 raftrole.Role.FOLLOWER,
@@ -611,7 +590,7 @@ def change_state_on_timeout(state: RaftState) -> raftmessage.Message:
 
         case raftrole.Role.CANDIDATE:
             state.current_term += 1
-            message = raftmessage.RunElection(
+            return raftmessage.RunElection(
                 state.identifier, state.identifier, state.create_followers_list()
             )
 
@@ -619,23 +598,22 @@ def change_state_on_timeout(state: RaftState) -> raftmessage.Message:
             # Check that as leader, has_followers has been initialized.
             assert state.has_followers is not None
 
-            # If response received from previous heartbeat, send out another
-            # heartbeat.
-            if state.has_followers:
-                message = raftmessage.UpdateFollowers(
-                    state.identifier, state.identifier, state.create_followers_list()
-                )
-
-            # If no response received, step down as leader.
-            else:
-                message = raftmessage.RoleChange(
+            # If no response received from previous heartbeat, step down as
+            # leader.
+            if not state.has_followers:
+                return raftmessage.RoleChange(
                     state.identifier,
                     state.identifier,
                     raftrole.Role.LEADER,
                     raftrole.Role.FOLLOWER,
                 )
 
+            # Otherwise send out another heartbeat.
             state.has_followers = False
 
-    assert message is not None
-    return message
+            return raftmessage.UpdateFollowers(
+                state.identifier, state.identifier, state.create_followers_list()
+            )
+
+        case _:
+            raise Exception("Exhaustive switch error on state change on timeout.")
