@@ -312,6 +312,29 @@ class RaftState:
     ###   CANDIDATE-RELATED HELPERS AND HANDLERS
     ###
 
+    def count_self_votes(self) -> int:
+        assert self.current_votes is not None
+        return len(
+            [
+                identifier
+                for identifier in self.current_votes.values()
+                if identifier == self.identifier
+            ]
+        )
+
+    def count_null_votes(self) -> int:
+        assert self.current_votes is not None
+        return len(
+            [
+                identifier
+                for identifier in self.current_votes.values()
+                if identifier is None
+            ]
+        )
+
+    def has_won_election(self) -> bool:
+        return self.count_self_votes() >= self.count_majority()
+
     def handle_candidate_solicitation(
         self,
         source: Optional[int] = None,
@@ -343,29 +366,6 @@ class RaftState:
             messages.append(message)
 
         return messages
-
-    def count_self_votes(self) -> int:
-        assert self.current_votes is not None
-        return len(
-            [
-                identifier
-                for identifier in self.current_votes.values()
-                if identifier == self.identifier
-            ]
-        )
-
-    def count_null_votes(self) -> int:
-        assert self.current_votes is not None
-        return len(
-            [
-                identifier
-                for identifier in self.current_votes.values()
-                if identifier is None
-            ]
-        )
-
-    def has_won_election(self) -> bool:
-        return self.count_self_votes() >= self.count_majority()
 
     def handle_request_vote_request(
         self,
@@ -457,6 +457,39 @@ class RaftState:
 
         return []
 
+    ###
+    ###   ROLE CHANGE-RELATED HELPERS AND HANDLERS
+    ###
+
+    def change_role(
+        self,
+        from_role: raftrole.Role,
+        to_role: raftrole.Role,
+        current_term: Optional[int] = None,
+    ) -> Tuple[raftrole.Role, raftrole.Role]:
+        match from_role:
+            case raftrole.Role.FOLLOWER:
+                source_role = raftrole.Role.TIMER
+
+            case raftrole.Role.CANDIDATE:
+                source_role = raftrole.Role.ELECTION_COMMISSION
+
+            case raftrole.Role.LEADER:
+                source_role = raftrole.Role.CONSTITUTION
+
+        state_change = raftrole.enumerate_state_change(
+            source_role,
+            current_term or self.current_term,
+            from_role,
+            current_term or self.current_term,
+        )
+
+        role_change = state_change["role_change"]
+        assert role_change == (from_role, to_role)
+
+        self.implement_state_change(state_change)
+        return role_change
+
     def handle_role_change(
         self,
         source: int,
@@ -468,14 +501,14 @@ class RaftState:
 
         match (from_role, to_role):
             case (raftrole.Role.FOLLOWER, raftrole.Role.CANDIDATE):
-                change_role(self, from_role, to_role)
+                self.change_role(from_role, to_role)
                 return [
                     raftmessage.RunElection(
                         self.identifier, self.identifier, self.create_followers_list()
                     )
                 ]
             case (raftrole.Role.LEADER, raftrole.Role.FOLLOWER):
-                change_role(self, from_role, to_role)
+                self.change_role(from_role, to_role)
                 return []
 
             case _:
@@ -541,41 +574,6 @@ class RaftState:
                 raise Exception(
                     "Exhaustive switch error on message type with message {message}."
                 )
-
-
-###
-###   HELPERS FOR RAFTSERVER AND TESTS
-###
-
-
-def change_role(
-    state: RaftState,
-    from_role: raftrole.Role,
-    to_role: raftrole.Role,
-    current_term: Optional[int] = None,
-) -> Tuple[raftrole.Role, raftrole.Role]:
-    match from_role:
-        case raftrole.Role.FOLLOWER:
-            source_role = raftrole.Role.TIMER
-
-        case raftrole.Role.CANDIDATE:
-            source_role = raftrole.Role.ELECTION_COMMISSION
-
-        case raftrole.Role.LEADER:
-            source_role = raftrole.Role.CONSTITUTION
-
-    state_change = raftrole.enumerate_state_change(
-        source_role,
-        current_term or state.current_term,
-        from_role,
-        current_term or state.current_term,
-    )
-
-    role_change = state_change["role_change"]
-    assert role_change == (from_role, to_role)
-
-    state.implement_state_change(state_change)
-    return role_change
 
 
 def change_state_on_timeout(state: RaftState) -> raftmessage.Message:
