@@ -48,9 +48,7 @@ class RaftServer:
         # vote is received.
         if self.reset:
             message = raftstate.change_state_on_timeout(self.state)
-
-            if message is not None:
-                self.node.incoming.put(raftmessage.encode_message(message))
+            self.node.incoming.put(raftmessage.encode_message(message))
 
         self.cycle()
 

@@ -461,6 +461,29 @@ class RaftState:
 
         return [], state_change["role_change"]
 
+    def handle_role_change_on_timeout(
+        self,
+        source: int,
+        target: int,
+        from_role: raftrole.Role,
+        to_role: raftrole.Role,
+    ) -> Tuple[
+        List[raftmessage.Message], Optional[Tuple[raftrole.Role, raftrole.Role]]
+    ]:
+        assert self.role == from_role
+
+        match (from_role, to_role):
+            case (raftrole.Role.FOLLOWER, raftrole.Role.CANDIDATE):
+                role_change = change_role_from_follower_to_candidate(self)
+
+            case (raftrole.Role.LEADER, raftrole.Role.FOLLOWER):
+                role_change = change_role_from_leader_to_follower(self)
+
+            case _:
+                raise Exception("Role change not allowed.")
+
+        return [], role_change
+
     ###
     ###   CUSTOM HELPERS AND HANDLERS
     ###
@@ -516,6 +539,9 @@ class RaftState:
             case raftmessage.RequestVoteResponse():
                 return self.handle_request_vote_response(**vars(message))
 
+            case raftmessage.RoleChange():
+                return self.handle_role_change_on_timeout(**vars(message))
+
             case raftmessage.Text():
                 return self.handle_text(**vars(message))
 
@@ -532,7 +558,7 @@ class RaftState:
 
 def change_role_from_follower_to_candidate(
     state: RaftState, current_term: Optional[int] = None
-) -> None:
+) -> Tuple[raftrole.Role, raftrole.Role]:
     state_change = raftrole.enumerate_state_change(
         raftrole.Role.TIMER,
         current_term or state.current_term,
@@ -541,10 +567,13 @@ def change_role_from_follower_to_candidate(
     )
     state.implement_state_change(state_change)
 
+    assert state_change["role_change"] is not None
+    return state_change["role_change"]
+
 
 def change_role_from_candidate_to_leader(
     state: RaftState, current_term: Optional[int] = None
-) -> None:
+) -> Tuple[raftrole.Role, raftrole.Role]:
     state_change = raftrole.enumerate_state_change(
         raftrole.Role.ELECTION_COMMISSION,
         current_term or state.current_term,
@@ -553,10 +582,13 @@ def change_role_from_candidate_to_leader(
     )
     state.implement_state_change(state_change)
 
+    assert state_change["role_change"] is not None
+    return state_change["role_change"]
+
 
 def change_role_from_leader_to_follower(
     state: RaftState, current_term: Optional[int] = None
-) -> None:
+) -> Tuple[raftrole.Role, raftrole.Role]:
     state_change = raftrole.enumerate_state_change(
         raftrole.Role.CONSTITUTION,
         current_term or state.current_term,
@@ -565,16 +597,21 @@ def change_role_from_leader_to_follower(
     )
     state.implement_state_change(state_change)
 
+    assert state_change["role_change"] is not None
+    return state_change["role_change"]
 
-def change_state_on_timeout(state: RaftState) -> Optional[raftmessage.Message]:
+
+def change_state_on_timeout(state: RaftState) -> raftmessage.Message:
     followers = state.create_followers_list()
     message: Optional[raftmessage.Message] = None
 
     match state.role:
         case raftrole.Role.FOLLOWER:
-            change_role_from_follower_to_candidate(state)
-            message = raftmessage.RunElection(
-                state.identifier, state.identifier, followers
+            message = raftmessage.RoleChange(
+                state.identifier,
+                state.identifier,
+                raftrole.Role.FOLLOWER,
+                raftrole.Role.CANDIDATE,
             )
 
         case raftrole.Role.CANDIDATE:
@@ -584,10 +621,11 @@ def change_state_on_timeout(state: RaftState) -> Optional[raftmessage.Message]:
             )
 
         case raftrole.Role.LEADER:
-            # If response received from previous heartbeat, send out another
-            # heartbeat.
+            # Check that as leader, has_followers has been initialized.
             assert state.has_followers is not None
 
+            # If response received from previous heartbeat, send out another
+            # heartbeat.
             if state.has_followers:
                 message = raftmessage.UpdateFollowers(
                     state.identifier, state.identifier, followers
@@ -595,8 +633,15 @@ def change_state_on_timeout(state: RaftState) -> Optional[raftmessage.Message]:
 
             # If no response received, step down as leader.
             else:
-                change_role_from_leader_to_follower(state)
+                message = raftmessage.RoleChange(
+                    state.identifier,
+                    state.identifier,
+                    raftrole.Role.LEADER,
+                    raftrole.Role.FOLLOWER,
+                )
+                # change_role_from_leader_to_follower(state)
 
             state.has_followers = False
 
+    assert message is not None
     return message

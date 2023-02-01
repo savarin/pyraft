@@ -4,10 +4,10 @@ import enum
 
 import rafthelpers
 import raftlog
+import raftrole
 
 
 class MessageType(enum.Enum):
-    TEXT = "TEXT"
     CLIENT_LOG_APPEND = "CLIENT_LOG_APPEND"
     UPDATE_FOLLOWERS = "UPDATE_FOLLOWERS"
     APPEND_REQUEST = "APPEND_REQUEST"
@@ -15,6 +15,8 @@ class MessageType(enum.Enum):
     RUN_ELECTION = "RUN_ELECTION"
     VOTE_REQUEST = "VOTE_REQUEST"
     VOTE_RESPONSE = "VOTE_RESPONSE"
+    ROLE_CHANGE = "ROLE_CHANGE"
+    TEXT = "TEXT"
 
 
 @dataclasses.dataclass
@@ -72,13 +74,16 @@ class RequestVoteResponse(Message):
     current_term: int
 
 
+@dataclasses.dataclass
+class RoleChange(Message):
+    from_role: raftrole.Role
+    to_role: raftrole.Role
+
+
 def encode_message(message: Message) -> str:
     attributes = vars(message).copy()
 
     match message:
-        case Text():
-            attributes["message_type"] = MessageType.TEXT.value
-
         case ClientLogAppend():
             attributes["message_type"] = MessageType.CLIENT_LOG_APPEND.value
 
@@ -107,6 +112,14 @@ def encode_message(message: Message) -> str:
         case RequestVoteResponse():
             attributes["message_type"] = MessageType.VOTE_RESPONSE.value
             attributes["success"] = int(attributes["success"])
+
+        case RoleChange():
+            attributes["message_type"] = MessageType.ROLE_CHANGE.value
+            attributes["from_role"] = attributes["from_role"].value
+            attributes["to_role"] = attributes["to_role"].value
+
+        case Text():
+            attributes["message_type"] = MessageType.TEXT.value
 
         case _:
             raise Exception(
@@ -151,6 +164,11 @@ def decode_message(string: str) -> Message:
         case MessageType.VOTE_RESPONSE:
             attributes["success"] = bool(attributes["success"])
             return RequestVoteResponse(**attributes)
+
+        case MessageType.ROLE_CHANGE:
+            attributes["from_role"] = raftrole.Role(attributes["from_role"])
+            attributes["to_role"] = raftrole.Role(attributes["to_role"])
+            return RoleChange(**attributes)
 
         case MessageType.TEXT:
             return Text(**attributes)
