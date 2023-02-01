@@ -197,7 +197,10 @@ class RaftState:
             self.commit_index = potential_commit_index
 
     def handle_leader_heartbeat(
-        self, source: int, target: int, followers: Optional[List[int]] = None
+        self,
+        source: Optional[int] = None,
+        target: Optional[int] = None,
+        followers: Optional[List[int]] = None,
     ) -> Tuple[
         List[raftmessage.Message], Optional[Tuple[raftrole.Role, raftrole.Role]]
     ]:
@@ -206,6 +209,12 @@ class RaftState:
         """
         if self.role != raftrole.Role.LEADER:
             raise Exception("Not able to generate leader heartbeat when not leader.")
+
+        if source is None:
+            source = self.identifier
+
+        if target is None:
+            target = self.identifier
 
         if followers is None:
             followers = self.create_followers_list()
@@ -322,7 +331,10 @@ class RaftState:
     ###
 
     def handle_candidate_solicitation(
-        self, source: int, target: int, followers: Optional[List[int]] = None
+        self,
+        source: Optional[int] = None,
+        target: Optional[int] = None,
+        followers: Optional[List[int]] = None,
     ) -> Tuple[
         List[raftmessage.Message], Optional[Tuple[raftrole.Role, raftrole.Role]]
     ]:
@@ -332,6 +344,12 @@ class RaftState:
         """
         if self.role != raftrole.Role.CANDIDATE:
             raise Exception("Not able to solicit votes when not candidate.")
+
+        if source is None:
+            source = self.identifier
+
+        if target is None:
+            target = self.identifier
 
         if followers is None:
             followers = self.create_followers_list()
@@ -472,17 +490,15 @@ class RaftState:
     ]:
         assert self.role == from_role
 
-        match (from_role, to_role):
-            case (raftrole.Role.FOLLOWER, raftrole.Role.CANDIDATE):
-                role_change = change_role_from_follower_to_candidate(self)
+        if (from_role, to_role) not in {
+            (raftrole.Role.FOLLOWER, raftrole.Role.CANDIDATE),
+            (raftrole.Role.LEADER, raftrole.Role.FOLLOWER),
+        }:
+            raise Exception(
+                f"Role change from {from_role} to {to_role} on timeout not allowed."
+            )
 
-            case (raftrole.Role.LEADER, raftrole.Role.FOLLOWER):
-                role_change = change_role_from_leader_to_follower(self)
-
-            case _:
-                raise Exception("Role change not allowed.")
-
-        return [], role_change
+        return [], change_role(self, from_role, to_role)
 
     ###
     ###   CUSTOM HELPERS AND HANDLERS
@@ -556,49 +572,38 @@ class RaftState:
 ###
 
 
-def change_role_from_follower_to_candidate(
-    state: RaftState, current_term: Optional[int] = None
+def change_role(
+    state: RaftState,
+    from_role: raftrole.Role,
+    to_role: raftrole.Role,
+    current_term: Optional[int] = None,
 ) -> Tuple[raftrole.Role, raftrole.Role]:
+    match from_role:
+        case raftrole.Role.FOLLOWER:
+            source_role = raftrole.Role.TIMER
+
+        case raftrole.Role.CANDIDATE:
+            source_role = raftrole.Role.ELECTION_COMMISSION
+
+        case raftrole.Role.LEADER:
+            source_role = raftrole.Role.CONSTITUTION
+
     state_change = raftrole.enumerate_state_change(
-        raftrole.Role.TIMER,
+        source_role,
         current_term or state.current_term,
-        raftrole.Role.FOLLOWER,
+        from_role,
         current_term or state.current_term,
     )
+
+    role_change = state_change["role_change"]
+
+    assert role_change is not None
+    assert role_change[0] == from_role
+    assert role_change[1] == to_role
+
     state.implement_state_change(state_change)
 
-    assert state_change["role_change"] is not None
-    return state_change["role_change"]
-
-
-def change_role_from_candidate_to_leader(
-    state: RaftState, current_term: Optional[int] = None
-) -> Tuple[raftrole.Role, raftrole.Role]:
-    state_change = raftrole.enumerate_state_change(
-        raftrole.Role.ELECTION_COMMISSION,
-        current_term or state.current_term,
-        raftrole.Role.CANDIDATE,
-        current_term or state.current_term,
-    )
-    state.implement_state_change(state_change)
-
-    assert state_change["role_change"] is not None
-    return state_change["role_change"]
-
-
-def change_role_from_leader_to_follower(
-    state: RaftState, current_term: Optional[int] = None
-) -> Tuple[raftrole.Role, raftrole.Role]:
-    state_change = raftrole.enumerate_state_change(
-        raftrole.Role.CONSTITUTION,
-        current_term or state.current_term,
-        raftrole.Role.LEADER,
-        current_term or state.current_term,
-    )
-    state.implement_state_change(state_change)
-
-    assert state_change["role_change"] is not None
-    return state_change["role_change"]
+    return role_change
 
 
 def change_state_on_timeout(state: RaftState) -> raftmessage.Message:
@@ -639,7 +644,6 @@ def change_state_on_timeout(state: RaftState) -> raftmessage.Message:
                     raftrole.Role.LEADER,
                     raftrole.Role.FOLLOWER,
                 )
-                # change_role_from_leader_to_follower(state)
 
             state.has_followers = False
 

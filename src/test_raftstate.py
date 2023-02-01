@@ -20,16 +20,17 @@ def init_raft_state(
     state.role = raftrole.Role.FOLLOWER
 
     if role in {raftrole.Role.CANDIDATE, raftrole.Role.LEADER}:
-        raftstate.change_role_from_follower_to_candidate(state, state.current_term - 1)
-        messages, _ = state.handle_candidate_solicitation(
-            state.identifier, state.identifier
+        raftstate.change_role(
+            state,
+            raftrole.Role.FOLLOWER,
+            raftrole.Role.CANDIDATE,
+            state.current_term - 1,
         )
+        messages, _ = state.handle_candidate_solicitation()
 
         if role == raftrole.Role.LEADER:
-            raftstate.change_role_from_candidate_to_leader(state)
-            messages, _ = state.handle_leader_heartbeat(
-                state.identifier, state.identifier
-            )
+            raftstate.change_role(state, raftrole.Role.CANDIDATE, raftrole.Role.LEADER)
+            messages, _ = state.handle_leader_heartbeat()
 
     else:
         messages = []
@@ -107,7 +108,7 @@ def test_update_indexes(paper_log: List[raftlog.LogEntry]) -> None:
     assert non_null_match_index_count == 2
     assert potential_commit_index == 9
 
-    leader_state.handle_client_log_append(1, 1, "7")
+    leader_state.handle_client_log_append(0, 1, "7")
     assert leader_state.next_index == {1: 11, 2: 10, 3: 10}
     assert leader_state.match_index == {1: 10, 2: 9, 3: None}
     assert leader_state.commit_index == -1
@@ -373,7 +374,7 @@ def test_consensus(
     assert leader_state.match_index == {1: 9, 2: 9, 3: 9}
     assert leader_state.commit_index == 9
 
-    request, _ = leader_state.handle_leader_heartbeat(0, 0, [1, 2])
+    request, _ = leader_state.handle_leader_heartbeat(followers=[2, 3])
     follower_a_state.handle_message(request[0])
     follower_b_state.handle_message(request[1])
     assert follower_a_state.commit_index == 9
@@ -394,8 +395,10 @@ def test_handle_vote_request(
     assert candidate_state.current_term == 6
     assert candidate_state.voted_for is None
 
-    raftstate.change_role_from_follower_to_candidate(candidate_state)
-    request, _ = candidate_state.handle_candidate_solicitation(1, 1)
+    raftstate.change_role(
+        candidate_state, raftrole.Role.FOLLOWER, raftrole.Role.CANDIDATE
+    )
+    request, _ = candidate_state.handle_candidate_solicitation()
     assert candidate_state.role == raftrole.Role.CANDIDATE
     assert candidate_state.current_term == 7
     assert candidate_state.voted_for == 1
@@ -520,20 +523,20 @@ def test_commit_with_requirement() -> None:
     )
 
     # (b) elect 5 as leader and append entry
-    raftstate.change_role_from_follower_to_candidate(state_5)
-    raftstate.change_role_from_candidate_to_leader(state_5)
-    state_5.handle_client_log_append(5, 5, "3")
-    state_5.handle_client_log_append(5, 5, "3")
-    state_5.handle_client_log_append(5, 5, "3")
+    raftstate.change_role(state_5, raftrole.Role.FOLLOWER, raftrole.Role.CANDIDATE)
+    raftstate.change_role(state_5, raftrole.Role.CANDIDATE, raftrole.Role.LEADER)
+    state_5.handle_client_log_append(0, 5, "3")
+    state_5.handle_client_log_append(0, 5, "3")
+    state_5.handle_client_log_append(0, 5, "3")
 
     # (c) election with candidate 1 with no winner in a split network, then
     # elect 1 as leader and append entry
-    raftstate.change_role_from_follower_to_candidate(state_1)
+    raftstate.change_role(state_1, raftrole.Role.FOLLOWER, raftrole.Role.CANDIDATE)
     state_1.current_term += 1
-    raftstate.change_role_from_candidate_to_leader(state_1)
+    raftstate.change_role(state_1, raftrole.Role.CANDIDATE, raftrole.Role.LEADER)
 
     for _ in range(2):
-        messages, _ = state_1.handle_leader_heartbeat(1, 1)
+        messages, _ = state_1.handle_leader_heartbeat()
 
         for i, state in enumerate([state_2, state_3, state_4, state_5]):
             if i in [2, 3]:
@@ -554,13 +557,13 @@ def test_commit_with_requirement() -> None:
 
     # (d) crash 5, election with candidate 5 with no winner in a split network,
     # then elect 5 as leader
-    raftstate.change_role_from_leader_to_follower(state_5)
-    raftstate.change_role_from_follower_to_candidate(state_5)
+    raftstate.change_role(state_5, raftrole.Role.LEADER, raftrole.Role.FOLLOWER)
+    raftstate.change_role(state_5, raftrole.Role.FOLLOWER, raftrole.Role.CANDIDATE)
     state_5.current_term += 1
-    raftstate.change_role_from_candidate_to_leader(state_5)
+    raftstate.change_role(state_5, raftrole.Role.CANDIDATE, raftrole.Role.LEADER)
 
     for _ in range(3):
-        messages, _ = state_5.handle_leader_heartbeat(1, 1)
+        messages, _ = state_5.handle_leader_heartbeat()
 
         for i, state in enumerate([state_1, state_2, state_3, state_4]):
             request = [messages[i]]
@@ -593,20 +596,20 @@ def test_commit_without_requirement() -> None:
     )
 
     # (b) elect 5 as leader and append entry
-    raftstate.change_role_from_follower_to_candidate(state_5)
-    raftstate.change_role_from_candidate_to_leader(state_5)
-    state_5.handle_client_log_append(5, 5, "3")
-    state_5.handle_client_log_append(5, 5, "3")
-    state_5.handle_client_log_append(5, 5, "3")
+    raftstate.change_role(state_5, raftrole.Role.FOLLOWER, raftrole.Role.CANDIDATE)
+    raftstate.change_role(state_5, raftrole.Role.CANDIDATE, raftrole.Role.LEADER)
+    state_5.handle_client_log_append(0, 5, "3")
+    state_5.handle_client_log_append(0, 5, "3")
+    state_5.handle_client_log_append(0, 5, "3")
 
     # (c) election with candidate 1 with no winner in a split network, then
     # elect 1 as leader and append entry
-    raftstate.change_role_from_follower_to_candidate(state_1)
+    raftstate.change_role(state_1, raftrole.Role.FOLLOWER, raftrole.Role.CANDIDATE)
     state_1.current_term += 1
-    raftstate.change_role_from_candidate_to_leader(state_1)
+    raftstate.change_role(state_1, raftrole.Role.CANDIDATE, raftrole.Role.LEADER)
 
     for _ in range(2):
-        messages, _ = state_1.handle_leader_heartbeat(1, 1)
+        messages, _ = state_1.handle_leader_heartbeat()
 
         for i, state in enumerate([state_2, state_3, state_4, state_5]):
             if i in [2, 3]:
@@ -627,13 +630,13 @@ def test_commit_without_requirement() -> None:
 
     # (d) crash 5, election with candidate 5 with no winner in a split network,
     # then elect 5 as leader
-    raftstate.change_role_from_leader_to_follower(state_5)
-    raftstate.change_role_from_follower_to_candidate(state_5)
+    raftstate.change_role(state_5, raftrole.Role.LEADER, raftrole.Role.FOLLOWER)
+    raftstate.change_role(state_5, raftrole.Role.FOLLOWER, raftrole.Role.CANDIDATE)
     state_5.current_term += 1
-    raftstate.change_role_from_candidate_to_leader(state_5)
+    raftstate.change_role(state_5, raftrole.Role.CANDIDATE, raftrole.Role.LEADER)
 
     for _ in range(2):
-        messages, _ = state_5.handle_leader_heartbeat(1, 1)
+        messages, _ = state_5.handle_leader_heartbeat()
 
         for i, state in enumerate([state_1, state_2, state_3, state_4]):
             request = [messages[i]]
