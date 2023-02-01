@@ -18,8 +18,10 @@ def initialize_socket(identifier: int) -> socket.socket:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
 
-    sock.bind(raftconfig.ADDRESS_BY_IDENTIFIER[identifier])
+    address = raftconfig.ADDRESS_BY_IDENTIFIER.get(identifier, ("localhost", 10000))
+    sock.bind(address)
     sock.listen()
+
     return sock
 
 
@@ -60,7 +62,7 @@ class RaftNode:
     def _listen(self, client: socket.socket) -> None:
         try:
             while True:
-                length = int.from_bytes(client.recv(1), byteorder="big")
+                length = int.from_bytes(client.recv(4), byteorder="big")
 
                 if length == 0:
                     raise IOError
@@ -88,7 +90,7 @@ class RaftNode:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.connect(address)
 
-            sock.sendall(len(message).to_bytes(1, byteorder="big"))
+            sock.sendall(len(message).to_bytes(4, byteorder="big"))
             sock.sendall(message)
 
         except Exception as e:

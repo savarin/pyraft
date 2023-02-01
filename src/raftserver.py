@@ -6,14 +6,13 @@ import sys
 import threading
 import time
 
-import raftconfig
 import raftmessage
 import raftnode
 import raftrole
 import raftstate
 
 
-TIMEOUT = 1
+TIMEOUT = 3
 
 
 @dataclasses.dataclass
@@ -25,9 +24,6 @@ class RaftServer:
         self.node: raftnode.RaftNode = raftnode.RaftNode(self.identifier)
         self.timer: threading.Timer = threading.Timer(TIMEOUT, self.timeout)
         self.reset: bool = False
-
-    def color(self) -> str:
-        return raftrole.color(self.state.role)
 
     def send(self, messages: List[raftmessage.Message]) -> None:
         for message in messages:
@@ -57,6 +53,9 @@ class RaftServer:
                 self.node.incoming.put(raftmessage.encode_message(message))
 
         self.cycle()
+
+    def color(self) -> str:
+        return raftrole.color(self.state.role)
 
     def respond(self) -> None:
         while True:
@@ -105,71 +104,10 @@ class RaftServer:
             except Exception as e:
                 print(self.color() + f"Exception: {e}")
 
-    # TODO: Carve out into separate client.
-    def instruct(self) -> None:
-        messages: List[raftmessage.Message] = []
-
-        while True:
-            prompt = input(self.color() + f"{self.identifier} > ")
-
-            if not prompt:
-                return None
-
-            try:
-                # If identifier not specified, use as shell.
-                if not (prompt[0].isdigit() and prompt[1] == " "):
-                    exec(f"print(self.color() + {prompt})")
-                    continue
-
-                target, command = int(prompt[0]), prompt[2:]
-
-                # If identifier specified but not own identifier, send message to
-                # target.
-                if target != self.identifier:
-                    messages = [raftmessage.Text(self.identifier, target, command)]
-                    self.send(messages)
-                    continue
-
-                # If identifier specified and is own identifier, act on own server.
-                # Here by exposing log.
-                if command.startswith("expose"):
-                    print(
-                        self.color()
-                        + f"+ {str(self.state.commit_index)} {str(self.state.log)}\n",
-                        end="",
-                    )
-
-                # Append entries to own log.
-                elif command.startswith("append"):
-                    for item in command.replace("append ", "").split():
-                        self.state.handle_message(
-                            raftmessage.ClientLogAppend(
-                                self.identifier, self.identifier, item
-                            )
-                        )
-
-                # Send out hearbeats to followers.
-                elif command.startswith("update"):
-                    followers = list(raftconfig.ADDRESS_BY_IDENTIFIER.keys())
-                    followers.remove(self.identifier)
-
-                    messages, change_role = self.state.handle_message(
-                        raftmessage.UpdateFollowers(
-                            self.identifier, self.identifier, followers
-                        )
-                    )
-
-                    self.send(messages)
-
-            except Exception as e:
-                print(self.color() + f"Exception: {e}")
-
     def run(self):
         self.node.start()
         self.timer.start()
-        threading.Thread(target=self.respond, args=()).start()
-
-        self.instruct()
+        self.respond()
 
         print(self.color() + "end.")
         os._exit(0)

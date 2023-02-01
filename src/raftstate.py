@@ -5,6 +5,8 @@ handle well-defined events.
 from typing import Dict, List, Optional, Tuple
 import dataclasses
 
+import colorama
+
 import raftconfig
 import raftlog
 import raftmessage
@@ -106,7 +108,7 @@ class RaftState:
         Client adds a log entry (received by leader).
         """
         if self.role != raftrole.Role.LEADER:
-            raise Exception("Not able to generate leader heartbeat when not leader.")
+            raise Exception("Not able to append entries when not leader.")
 
         self.log.append(raftlog.LogEntry(self.current_term, item))
 
@@ -472,25 +474,14 @@ class RaftState:
         List[raftmessage.Message], Optional[Tuple[raftrole.Role, raftrole.Role]]
     ]:
         """
-        Simplify testing with custom commands passed by messages. Have ability
-        to expose and modify state, but not send messages so update is not
-        implemented.
+        Simplify testing by enabling state to be exposed.
         """
-        if text.startswith("expose"):
-            text = f"+ {str(self.commit_index)} {str(self.log)}"
+        if text.startswith("self"):
+            text = "\n".join(
+                [f"{item[0]}: {str(item[1])}" for item in sorted(vars(self).items())]
+            )
+            print("\n\n" + colorama.Fore.WHITE + text)
 
-        elif text.startswith("append"):
-            try:
-                for item in text.replace("append ", "").split():
-                    self.handle_client_log_append(target, target, item)
-
-            except Exception as e:
-                text = f"Exception: {e}"
-
-        else:
-            text = f"{source} > {target} {text}"
-
-        print(self.color() + f"\n{text}\n{target} > ", end="")
         return [], None
 
     ###
