@@ -479,11 +479,15 @@ class RaftState:
                 )
                 self.implement_state_change(state_change)
 
-                messages += self.handle_leader_heartbeat()[0]
+                messages.append(
+                    raftmessage.UpdateFollowers(
+                        self.identifier, self.identifier, self.create_followers_list()
+                    )
+                )
 
         return messages, state_change["role_change"]
 
-    def handle_role_change_on_timeout(
+    def handle_role_change(
         self,
         source: int,
         target: int,
@@ -492,17 +496,27 @@ class RaftState:
     ) -> Tuple[
         List[raftmessage.Message], Optional[Tuple[raftrole.Role, raftrole.Role]]
     ]:
+        messages: List[raftmessage.Message] = []
+
         assert self.role == from_role
 
-        if (from_role, to_role) not in {
-            (raftrole.Role.FOLLOWER, raftrole.Role.CANDIDATE),
-            (raftrole.Role.LEADER, raftrole.Role.FOLLOWER),
-        }:
-            raise Exception(
-                f"Role change from {from_role} to {to_role} on timeout not allowed."
-            )
+        match (from_role, to_role):
+            case (raftrole.Role.FOLLOWER, raftrole.Role.CANDIDATE):
+                messages.append(
+                    raftmessage.RunElection(
+                        self.identifier, self.identifier, self.create_followers_list()
+                    )
+                )
 
-        return [], change_role(self, from_role, to_role)
+            case (raftrole.Role.LEADER, raftrole.Role.FOLLOWER):
+                pass
+
+            case _:
+                raise Exception(
+                    f"Role change from {from_role} to {to_role} on timeout not supported."
+                )
+
+        return messages, change_role(self, from_role, to_role)
 
     ###
     ###   CUSTOM HELPERS AND HANDLERS
@@ -560,7 +574,7 @@ class RaftState:
                 return self.handle_request_vote_response(**vars(message))
 
             case raftmessage.RoleChange():
-                return self.handle_role_change_on_timeout(**vars(message))
+                return self.handle_role_change(**vars(message))
 
             case raftmessage.Text():
                 return self.handle_text(**vars(message))
@@ -611,7 +625,6 @@ def change_role(
 
 
 def change_state_on_timeout(state: RaftState) -> raftmessage.Message:
-    followers = state.create_followers_list()
     message: Optional[raftmessage.Message] = None
 
     match state.role:
@@ -626,7 +639,7 @@ def change_state_on_timeout(state: RaftState) -> raftmessage.Message:
         case raftrole.Role.CANDIDATE:
             state.current_term += 1
             message = raftmessage.RunElection(
-                state.identifier, state.identifier, followers
+                state.identifier, state.identifier, state.create_followers_list()
             )
 
         case raftrole.Role.LEADER:
@@ -637,7 +650,7 @@ def change_state_on_timeout(state: RaftState) -> raftmessage.Message:
             # heartbeat.
             if state.has_followers:
                 message = raftmessage.UpdateFollowers(
-                    state.identifier, state.identifier, followers
+                    state.identifier, state.identifier, state.create_followers_list()
                 )
 
             # If no response received, step down as leader.

@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List
 import dataclasses
 import os
 import random
@@ -56,13 +56,6 @@ class RaftServer:
         return raftrole.color(self.state.role)
 
     def respond(self) -> None:
-        followers = [
-            identifier
-            for identifier in self.state.config
-            if identifier != self.identifier
-        ]
-        message: Optional[raftmessage.Message] = None
-
         while True:
             payload = self.node.receive()
 
@@ -90,16 +83,6 @@ class RaftServer:
                     print(self.color() + f"\n{request.target} > ", end="")
 
                 response, role_change = self.state.handle_message(request)
-
-                match role_change:
-                    case (raftrole.Role.FOLLOWER, raftrole.Role.CANDIDATE):
-                        assert len(response) == 0
-                        message = raftmessage.RunElection(
-                            self.identifier, self.identifier, followers
-                        )
-                        self.node.send(
-                            message.target, raftmessage.encode_message(message)
-                        )
 
                 self.send(response)
 
