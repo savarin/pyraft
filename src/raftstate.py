@@ -101,9 +101,7 @@ class RaftState:
 
     def handle_client_log_append(
         self, source: int, target: int, item: str
-    ) -> Tuple[
-        List[raftmessage.Message], Optional[Tuple[raftrole.Role, raftrole.Role]]
-    ]:
+    ) -> List[raftmessage.Message]:
         """
         Client adds a log entry (received by leader).
         """
@@ -118,7 +116,7 @@ class RaftState:
         assert self.match_index is not None
         self.match_index[target] = len(self.log) - 1
 
-        return [], None
+        return []
 
     ###
     ###   LEADER-RELATED HELPERS AND HANDLERS
@@ -201,9 +199,7 @@ class RaftState:
         source: Optional[int] = None,
         target: Optional[int] = None,
         followers: Optional[List[int]] = None,
-    ) -> Tuple[
-        List[raftmessage.Message], Optional[Tuple[raftrole.Role, raftrole.Role]]
-    ]:
+    ) -> List[raftmessage.Message]:
         """
         Leader heartbeat. Send AppendEntries to all followers.
         """
@@ -229,7 +225,7 @@ class RaftState:
             )
             messages.append(message)
 
-        return messages, None
+        return messages
 
     def handle_append_entries_request(
         self,
@@ -240,9 +236,7 @@ class RaftState:
         previous_term: int,
         entries: List[raftlog.LogEntry],
         commit_index: int,
-    ) -> Tuple[
-        List[raftmessage.Message], Optional[Tuple[raftrole.Role, raftrole.Role]]
-    ]:
+    ) -> List[raftmessage.Message]:
         """
         Update to the log (received by a follower).
         """
@@ -261,7 +255,7 @@ class RaftState:
                     False,
                     len(entries),
                 )
-            ], state_change["role_change"]
+            ]
 
         success = raftlog.append_entries(
             self.log, previous_index, previous_term, entries
@@ -276,7 +270,7 @@ class RaftState:
             raftmessage.AppendEntryResponse(
                 target, source, self.current_term, success, len(entries)
             )
-        ], state_change["role_change"]
+        ]
 
     def handle_append_entries_response(
         self,
@@ -285,9 +279,7 @@ class RaftState:
         current_term: int,
         success: bool,
         entries_length: int,
-    ) -> Tuple[
-        List[raftmessage.Message], Optional[Tuple[raftrole.Role, raftrole.Role]]
-    ]:
+    ) -> List[raftmessage.Message]:
         """
         Follower response (received by leader).
         """
@@ -300,7 +292,7 @@ class RaftState:
 
         # If not leader, then early return with no log changes.
         if self.role != raftrole.Role.LEADER:
-            return [], state_change["role_change"]
+            return []
 
         # If successful, update indexes.
         if success:
@@ -309,7 +301,7 @@ class RaftState:
             assert self.has_followers is not None
             self.has_followers = True
 
-            return [], state_change["role_change"]
+            return []
 
         # If not successful, retry with earlier entries.
         assert self.next_index is not None
@@ -324,7 +316,7 @@ class RaftState:
                 source,
                 *self.create_append_entries_arguments(source),
             )
-        ], state_change["role_change"]
+        ]
 
     ###
     ###   CANDIDATE-RELATED HELPERS AND HANDLERS
@@ -335,10 +327,7 @@ class RaftState:
         source: Optional[int] = None,
         target: Optional[int] = None,
         followers: Optional[List[int]] = None,
-    ) -> Tuple[
-        List[raftmessage.Message], Optional[Tuple[raftrole.Role, raftrole.Role]]
-    ]:
-        messages: List[raftmessage.Message] = []
+    ) -> List[raftmessage.Message]:
         """
         Candidate soliciting votes. Send RequestVoteRequest to all followers.
         """
@@ -354,6 +343,8 @@ class RaftState:
         if followers is None:
             followers = self.create_followers_list()
 
+        messages: List[raftmessage.Message] = []
+
         previous_term = self.log[-1].term if len(self.log) > 0 else -1
 
         for follower in followers:
@@ -366,7 +357,7 @@ class RaftState:
             )
             messages.append(message)
 
-        return messages, None
+        return messages
 
     def count_self_votes(self) -> int:
         assert self.current_votes is not None
@@ -398,9 +389,7 @@ class RaftState:
         current_term: int,
         last_log_index: int,
         last_log_term: int,
-    ) -> Tuple[
-        List[raftmessage.Message], Optional[Tuple[raftrole.Role, raftrole.Role]]
-    ]:
+    ) -> List[raftmessage.Message]:
         state_change = raftrole.enumerate_state_change(
             raftrole.Role.CANDIDATE, current_term, self.role, self.current_term
         )
@@ -412,7 +401,7 @@ class RaftState:
                 raftmessage.RequestVoteResponse(
                     target, source, False, self.current_term
                 )
-            ], state_change["role_change"]
+            ]
 
         # Require candidate have higher term.
         if current_term < self.current_term:
@@ -441,7 +430,7 @@ class RaftState:
 
         return [
             raftmessage.RequestVoteResponse(target, source, success, self.current_term)
-        ], state_change["role_change"]
+        ]
 
     def handle_request_vote_response(
         self,
@@ -449,9 +438,7 @@ class RaftState:
         target: int,
         success: bool,
         current_term: int,
-    ) -> Tuple[
-        List[raftmessage.Message], Optional[Tuple[raftrole.Role, raftrole.Role]]
-    ]:
+    ) -> List[raftmessage.Message]:
         # Since state change from candidate to follower on the back of a message
         # with equal term from a leader is only relevant for append entry
         # requests, can assume message from follower.
@@ -460,11 +447,9 @@ class RaftState:
         )
         self.implement_state_change(state_change)
 
-        messages: List[raftmessage.Message] = []
-
         # If not candidate, then early return with no log changes.
         if self.role != raftrole.Role.CANDIDATE:
-            return messages, state_change["role_change"]
+            return []
 
         if success:
             assert self.current_votes is not None
@@ -479,13 +464,13 @@ class RaftState:
                 )
                 self.implement_state_change(state_change)
 
-                messages.append(
+                return [
                     raftmessage.UpdateFollowers(
                         self.identifier, self.identifier, self.create_followers_list()
                     )
-                )
+                ]
 
-        return messages, state_change["role_change"]
+        return []
 
     def handle_role_change(
         self,
@@ -493,30 +478,25 @@ class RaftState:
         target: int,
         from_role: raftrole.Role,
         to_role: raftrole.Role,
-    ) -> Tuple[
-        List[raftmessage.Message], Optional[Tuple[raftrole.Role, raftrole.Role]]
-    ]:
-        messages: List[raftmessage.Message] = []
-
+    ) -> List[raftmessage.Message]:
         assert self.role == from_role
 
         match (from_role, to_role):
             case (raftrole.Role.FOLLOWER, raftrole.Role.CANDIDATE):
-                messages.append(
+                change_role(self, from_role, to_role)
+                return [
                     raftmessage.RunElection(
                         self.identifier, self.identifier, self.create_followers_list()
                     )
-                )
-
+                ]
             case (raftrole.Role.LEADER, raftrole.Role.FOLLOWER):
-                pass
+                change_role(self, from_role, to_role)
+                return []
 
             case _:
                 raise Exception(
                     f"Role change from {from_role} to {to_role} on timeout not supported."
                 )
-
-        return messages, change_role(self, from_role, to_role)
 
     ###
     ###   CUSTOM HELPERS AND HANDLERS
@@ -527,9 +507,7 @@ class RaftState:
 
     def handle_text(
         self, source: int, target: int, text: str
-    ) -> Tuple[
-        List[raftmessage.Message], Optional[Tuple[raftrole.Role, raftrole.Role]]
-    ]:
+    ) -> List[raftmessage.Message]:
         """
         Simplify testing by enabling state to be exposed.
         """
@@ -539,18 +517,13 @@ class RaftState:
             )
             print("\n\n" + colorama.Fore.WHITE + text)
 
-        return [], None
+        return []
 
     ###
     ###   PUBLIC INTERFACE TO HANDLERS
     ###
 
-    # TODO: Create message handler for timer.
-    def handle_message(
-        self, message: raftmessage.Message
-    ) -> Tuple[
-        List[raftmessage.Message], Optional[Tuple[raftrole.Role, raftrole.Role]]
-    ]:
+    def handle_message(self, message: raftmessage.Message) -> List[raftmessage.Message]:
         match message:
             case raftmessage.ClientLogAppend():
                 return self.handle_client_log_append(**vars(message))

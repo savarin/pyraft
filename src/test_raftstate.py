@@ -26,11 +26,11 @@ def init_raft_state(
             raftrole.Role.CANDIDATE,
             state.current_term - 1,
         )
-        messages, _ = state.handle_candidate_solicitation()
+        messages = state.handle_candidate_solicitation()
 
         if role == raftrole.Role.LEADER:
             raftstate.change_role(state, raftrole.Role.CANDIDATE, raftrole.Role.LEADER)
-            messages, _ = state.handle_leader_heartbeat()
+            messages = state.handle_leader_heartbeat()
 
     else:
         messages = []
@@ -152,14 +152,14 @@ def test_handle_append_entries_request(
         1, logs_by_identifier["a"], raftrole.Role.FOLLOWER, 6
     )
 
-    response, _ = follower_state.handle_append_entries_request(
+    response = follower_state.handle_append_entries_request(
         1, 2, 6, 8, 6, [raftlog.LogEntry(6, "6")], -1
     )
     assert isinstance(response[0], raftmessage.AppendEntryResponse)
     assert response[0].success
     assert response[0].entries_length == 1
 
-    response, _ = follower_state.handle_append_entries_request(
+    response = follower_state.handle_append_entries_request(
         1, 2, 6, 10, 6, [raftlog.LogEntry(6, "6")], -1
     )
     assert isinstance(response[0], raftmessage.AppendEntryResponse)
@@ -171,13 +171,13 @@ def test_handle_append_entries_response(paper_log: List[raftlog.LogEntry]) -> No
     # Figure 7
     leader_state, _ = init_raft_state(1, paper_log, raftrole.Role.LEADER, 6)
 
-    response, _ = leader_state.handle_append_entries_response(2, 1, 6, False, 0)
+    response = leader_state.handle_append_entries_response(2, 1, 6, False, 0)
     assert isinstance(response[0], raftmessage.AppendEntryRequest)
     assert response[0].previous_index == 8
     assert response[0].previous_term == 6
     assert response[0].entries == [raftlog.LogEntry(6, "6")]
 
-    response, _ = leader_state.handle_append_entries_response(2, 1, 6, True, 1)
+    response = leader_state.handle_append_entries_response(2, 1, 6, True, 1)
     assert len(response) == 0
 
 
@@ -200,18 +200,18 @@ def test_handle_message_a(
         paper_log, logs_by_identifier["a"], None
     )
 
-    response, _ = follower_state.handle_message(request[0])
+    response = follower_state.handle_message(request[0])
     assert not response[0].success
     assert response[0].entries_length == 0
     assert leader_state.next_index[2] == 10
 
-    request, _ = leader_state.handle_message(response[0])
-    response, _ = follower_state.handle_message(request[0])
+    request = leader_state.handle_message(response[0])
+    response = follower_state.handle_message(request[0])
     assert response[0].success
     assert response[0].entries_length == 1
     assert leader_state.next_index[2] == 9
 
-    assert len(leader_state.handle_message(response[0])[0]) == 0
+    assert len(leader_state.handle_message(response[0])) == 0
     assert leader_state.next_index[2] == 10
 
 
@@ -225,20 +225,20 @@ def test_handle_message_b(
     )
 
     for i in range(6):
-        response, _ = follower_state.handle_message(request[0])
+        response = follower_state.handle_message(request[0])
 
         assert not response[0].success
         assert response[0].entries_length == i
         assert leader_state.next_index[2] == 10 - i
 
-        request, _ = leader_state.handle_message(response[0])
+        request = leader_state.handle_message(response[0])
 
-    response, _ = follower_state.handle_message(request[0])
+    response = follower_state.handle_message(request[0])
     assert response[0].success
     assert response[0].entries_length == 6
     assert leader_state.next_index[2] == 4
 
-    assert len(leader_state.handle_message(response[0])[0]) == 0
+    assert len(leader_state.handle_message(response[0])) == 0
     assert leader_state.next_index[2] == 10
 
 
@@ -251,12 +251,12 @@ def test_handle_message_c(
         paper_log, logs_by_identifier["c"], None
     )
 
-    response, _ = follower_state.handle_message(request[0])
+    response = follower_state.handle_message(request[0])
     assert response[0].success
     assert response[0].entries_length == 0
     assert leader_state.next_index[2] == 10
 
-    assert len(leader_state.handle_message(response[0])[0]) == 0
+    assert len(leader_state.handle_message(response[0])) == 0
     assert leader_state.next_index[2] == 10
 
 
@@ -269,12 +269,12 @@ def test_handle_message_d(
         paper_log, logs_by_identifier["d"], None
     )
 
-    response, _ = follower_state.handle_message(request[0])
+    response = follower_state.handle_message(request[0])
     assert response[0].success
     assert response[0].entries_length == 0
     assert leader_state.next_index[2] == 10
 
-    assert len(leader_state.handle_message(response[0])[0]) == 0
+    assert len(leader_state.handle_message(response[0])) == 0
     assert leader_state.next_index[2] == 10
 
 
@@ -287,23 +287,23 @@ def test_handle_message_e(
         paper_log, logs_by_identifier["e"], None
     )
 
-    request, _ = leader_state.handle_message(raftmessage.UpdateFollowers(1, 1, [2]))
+    request = leader_state.handle_message(raftmessage.UpdateFollowers(1, 1, [2]))
 
     for i in range(5):
-        response, _ = follower_state.handle_message(request[0])
+        response = follower_state.handle_message(request[0])
 
         assert not response[0].success
         assert response[0].entries_length == i
         assert leader_state.next_index[2] == 10 - i
 
-        request, _ = leader_state.handle_message(response[0])
+        request = leader_state.handle_message(response[0])
 
-    response, _ = follower_state.handle_message(request[0])
+    response = follower_state.handle_message(request[0])
     assert response[0].success
     assert response[0].entries_length == 5
     assert leader_state.next_index[2] == 5
 
-    assert len(leader_state.handle_message(response[0])[0]) == 0
+    assert len(leader_state.handle_message(response[0])) == 0
     assert leader_state.next_index[2] == 10
 
 
@@ -317,20 +317,20 @@ def test_handle_message_f(
     )
 
     for i in range(7):
-        response, _ = follower_state.handle_message(request[0])
+        response = follower_state.handle_message(request[0])
 
         assert not response[0].success
         assert response[0].entries_length == i
         assert leader_state.next_index[2] is 10 - i
 
-        request, _ = leader_state.handle_message(response[0])
+        request = leader_state.handle_message(response[0])
 
-    response, _ = follower_state.handle_message(request[0])
+    response = follower_state.handle_message(request[0])
     assert response[0].success
     assert response[0].entries_length == 7
     assert leader_state.next_index[2] == 3
 
-    assert len(leader_state.handle_message(response[0])[0]) == 0
+    assert len(leader_state.handle_message(response[0])) == 0
     assert leader_state.next_index[2] == 10
 
 
@@ -346,35 +346,35 @@ def test_consensus(
     assert leader_state.match_index == {1: 9, 2: None, 3: None}
     assert leader_state.commit_index == -1
 
-    response_a, _ = follower_a_state.handle_message(request[0])
-    request_a, _ = leader_state.handle_message(response_a[0])
+    response_a = follower_a_state.handle_message(request[0])
+    request_a = leader_state.handle_message(response_a[0])
     assert leader_state.next_index == {1: 10, 2: 9, 3: 10}
     assert leader_state.match_index == {1: 9, 2: None, 3: None}
     assert leader_state.commit_index == -1
 
-    response_a, _ = follower_a_state.handle_message(request_a[0])
+    response_a = follower_a_state.handle_message(request_a[0])
     leader_state.handle_message(response_a[0])
     assert leader_state.next_index == {1: 10, 2: 10, 3: 10}
     assert leader_state.match_index == {1: 9, 2: 9, 3: None}
     assert leader_state.commit_index == 9
 
-    response_b, _ = follower_b_state.handle_message(request[1])
+    response_b = follower_b_state.handle_message(request[1])
 
     for i in range(6):
-        request_b, _ = leader_state.handle_message(response_b[0])
+        request_b = leader_state.handle_message(response_b[0])
 
         assert leader_state.next_index == {1: 10, 2: 10, 3: 9 - i}
         assert leader_state.match_index == {1: 9, 2: 9, 3: None}
         assert leader_state.commit_index == 9
 
-        response_b, _ = follower_b_state.handle_message(request_b[0])
+        response_b = follower_b_state.handle_message(request_b[0])
 
     leader_state.handle_message(response_b[0])
     assert leader_state.next_index == {1: 10, 2: 10, 3: 10}
     assert leader_state.match_index == {1: 9, 2: 9, 3: 9}
     assert leader_state.commit_index == 9
 
-    request, _ = leader_state.handle_leader_heartbeat(followers=[2, 3])
+    request = leader_state.handle_leader_heartbeat(followers=[2, 3])
     follower_a_state.handle_message(request[0])
     follower_b_state.handle_message(request[1])
     assert follower_a_state.commit_index == 9
@@ -398,7 +398,7 @@ def test_handle_vote_request(
     raftstate.change_role(
         candidate_state, raftrole.Role.FOLLOWER, raftrole.Role.CANDIDATE
     )
-    request, _ = candidate_state.handle_candidate_solicitation()
+    request = candidate_state.handle_candidate_solicitation()
     assert candidate_state.role == raftrole.Role.CANDIDATE
     assert candidate_state.current_term == 7
     assert candidate_state.voted_for == 1
@@ -412,19 +412,19 @@ def test_handle_vote_request(
     )
 
     # Initial vote request.
-    response, _ = follower_a_state.handle_message(request[0])
+    response = follower_a_state.handle_message(request[0])
     assert isinstance(response[0], raftmessage.RequestVoteResponse)
     assert response[0].success
     assert response[0].current_term == 7
 
     # Resend of vote request returns True.
-    response, _ = follower_a_state.handle_message(request[0])
+    response = follower_a_state.handle_message(request[0])
     assert isinstance(response[0], raftmessage.RequestVoteResponse)
     assert response[0].success
     assert response[0].current_term == 7
 
     # Vote request from another candidate returns False.
-    response, _ = follower_a_state.handle_request_vote_request(2, 1, 7, 10, 6)
+    response = follower_a_state.handle_request_vote_request(2, 1, 7, 10, 6)
     assert isinstance(response[0], raftmessage.RequestVoteResponse)
     assert not response[0].success
     assert response[0].current_term == 7
@@ -438,7 +438,7 @@ def test_handle_vote_request(
     )
 
     # Voter has longer log than candidate.
-    response, _ = follower_d_state.handle_message(request[1])
+    response = follower_d_state.handle_message(request[1])
     assert isinstance(response[0], raftmessage.RequestVoteResponse)
     assert not response[0].success
     assert response[0].current_term == 7
@@ -446,7 +446,7 @@ def test_handle_vote_request(
     follower_d_state.log.pop()
 
     # Voter has most recent entry having higher term.
-    response, _ = follower_d_state.handle_message(request[1])
+    response = follower_d_state.handle_message(request[1])
     assert isinstance(response[0], raftmessage.RequestVoteResponse)
     assert not response[0].success
     assert response[0].current_term == 7
@@ -454,7 +454,7 @@ def test_handle_vote_request(
     follower_d_state.log.pop()
 
     # Vote can now succeed.
-    response, _ = follower_d_state.handle_message(request[1])
+    response = follower_d_state.handle_message(request[1])
     assert isinstance(response[0], raftmessage.RequestVoteResponse)
     assert response[0].success
     assert response[0].current_term == 7
@@ -476,14 +476,13 @@ def test_handle_vote_response(
         2, logs_by_identifier["d"], raftrole.Role.FOLLOWER, 6
     )
 
-    response, _ = follower_d_state.handle_message(request[0])
+    response = follower_d_state.handle_message(request[0])
     assert isinstance(response[0], raftmessage.RequestVoteResponse)
     assert not response[0].success
     assert response[0].current_term == 7
     assert follower_d_state.voted_for is None
 
-    _, change_role = candidate_state.handle_message(response[0])
-    assert change_role is None
+    candidate_state.handle_message(response[0])
     assert candidate_state.role == raftrole.Role.CANDIDATE
     assert candidate_state.current_term == 7
     assert candidate_state.voted_for == 1
@@ -493,14 +492,13 @@ def test_handle_vote_response(
         3, logs_by_identifier["a"], raftrole.Role.FOLLOWER, 6
     )
 
-    response, _ = follower_a_state.handle_message(request[1])
+    response = follower_a_state.handle_message(request[1])
     assert isinstance(response[0], raftmessage.RequestVoteResponse)
     assert response[0].success
     assert response[0].current_term == 7
     assert follower_a_state.voted_for == 1
 
-    _, change_role = candidate_state.handle_message(response[0])
-    assert change_role == (raftrole.Role.CANDIDATE, raftrole.Role.LEADER)
+    candidate_state.handle_message(response[0])
     assert candidate_state.role == raftrole.Role.LEADER
     assert candidate_state.current_term == 7
     assert candidate_state.voted_for == 1
@@ -536,7 +534,7 @@ def test_commit_with_requirement() -> None:
     raftstate.change_role(state_1, raftrole.Role.CANDIDATE, raftrole.Role.LEADER)
 
     for _ in range(2):
-        messages, _ = state_1.handle_leader_heartbeat()
+        messages = state_1.handle_leader_heartbeat()
 
         for i, state in enumerate([state_2, state_3, state_4, state_5]):
             if i in [2, 3]:
@@ -545,8 +543,8 @@ def test_commit_with_requirement() -> None:
             request = [messages[i]]
 
             while len(request) > 0:
-                response, _ = state.handle_message(request[0])
-                request, _ = state_1.handle_message(response[0])
+                response = state.handle_message(request[0])
+                request = state_1.handle_message(response[0])
 
     assert len(state_2.log) == 2
     assert state_2.log[1] == raftlog.LogEntry(2, "2")
@@ -563,14 +561,14 @@ def test_commit_with_requirement() -> None:
     raftstate.change_role(state_5, raftrole.Role.CANDIDATE, raftrole.Role.LEADER)
 
     for _ in range(3):
-        messages, _ = state_5.handle_leader_heartbeat()
+        messages = state_5.handle_leader_heartbeat()
 
         for i, state in enumerate([state_1, state_2, state_3, state_4]):
             request = [messages[i]]
 
             while len(request) > 0:
-                response, _ = state.handle_message(request[0])
-                request, _ = state_5.handle_message(response[0])
+                response = state.handle_message(request[0])
+                request = state_5.handle_message(response[0])
 
     assert len(state_2.log) == 4
     assert state_2.log[1] == raftlog.LogEntry(3, "3")
@@ -609,7 +607,7 @@ def test_commit_without_requirement() -> None:
     raftstate.change_role(state_1, raftrole.Role.CANDIDATE, raftrole.Role.LEADER)
 
     for _ in range(2):
-        messages, _ = state_1.handle_leader_heartbeat()
+        messages = state_1.handle_leader_heartbeat()
 
         for i, state in enumerate([state_2, state_3, state_4, state_5]):
             if i in [2, 3]:
@@ -618,8 +616,8 @@ def test_commit_without_requirement() -> None:
             request = [messages[i]]
 
             while len(request) > 0:
-                response, _ = state.handle_message(request[0])
-                request, _ = state_1.handle_message(response[0])
+                response = state.handle_message(request[0])
+                request = state_1.handle_message(response[0])
 
     assert len(state_2.log) == 2
     assert state_2.log[1] == raftlog.LogEntry(2, "2")
@@ -636,14 +634,14 @@ def test_commit_without_requirement() -> None:
     raftstate.change_role(state_5, raftrole.Role.CANDIDATE, raftrole.Role.LEADER)
 
     for _ in range(2):
-        messages, _ = state_5.handle_leader_heartbeat()
+        messages = state_5.handle_leader_heartbeat()
 
         for i, state in enumerate([state_1, state_2, state_3, state_4]):
             request = [messages[i]]
 
             while len(request) > 0:
-                response, _ = state.handle_message(request[0])
-                request, _ = state_5.handle_message(response[0])
+                response = state.handle_message(request[0])
+                request = state_5.handle_message(response[0])
 
     assert len(state_2.log) == 4
     assert state_2.log[1] == raftlog.LogEntry(3, "3")

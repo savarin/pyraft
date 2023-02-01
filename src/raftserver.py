@@ -82,8 +82,7 @@ class RaftServer:
                 if not isinstance(request, raftmessage.Text):
                     print(self.color() + f"\n{request.target} > ", end="")
 
-                response, role_change = self.state.handle_message(request)
-
+                response = self.state.handle_message(request)
                 self.send(response)
 
             except Exception as e:
