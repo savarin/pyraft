@@ -174,12 +174,12 @@ class RaftState:
 
         return non_null_match_index_count, potential_commit_index
 
-    def update_indexes(self, target: int) -> None:
+    def update_indexes(self, target: int, entries_length: int) -> None:
         assert self.next_index is not None
-        self.next_index[target] = len(self.log)
+        self.next_index[target] += entries_length
 
         assert self.match_index is not None
-        self.match_index[target] = len(self.log) - 1
+        self.match_index[target] = self.next_index[target] - 1
 
         # Change to leader's commit_index is only relevant after a successful
         # append entry response from follower.
@@ -295,7 +295,7 @@ class RaftState:
 
         # If successful, update indexes.
         if success:
-            self.update_indexes(source)
+            self.update_indexes(source, entries_length)
 
             assert self.has_followers is not None
             self.has_followers = True

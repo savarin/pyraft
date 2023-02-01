@@ -95,7 +95,7 @@ def test_update_indexes(paper_log: List[raftlog.LogEntry]) -> None:
     assert leader_state.match_index == {1: 9, 2: None, 3: None}
     assert leader_state.commit_index == -1
 
-    leader_state.update_indexes(2)
+    leader_state.update_indexes(2, 0)
     assert leader_state.next_index == {1: 10, 2: 10, 3: 10}
     assert leader_state.match_index == {1: 9, 2: 9, 3: None}
     assert leader_state.commit_index == -1
@@ -112,7 +112,7 @@ def test_update_indexes(paper_log: List[raftlog.LogEntry]) -> None:
     assert leader_state.match_index == {1: 10, 2: 9, 3: None}
     assert leader_state.commit_index == -1
 
-    leader_state.update_indexes(2)
+    leader_state.update_indexes(2, 1)
     assert leader_state.next_index == {1: 11, 2: 11, 3: 10}
     assert leader_state.match_index == {1: 10, 2: 10, 3: None}
     assert leader_state.commit_index == 10
