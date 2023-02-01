@@ -42,12 +42,12 @@ def init_raft_states(
     follower_a_log: List[raftlog.LogEntry],
     follower_b_log: Optional[List[raftlog.LogEntry]],
 ):
-    leader_state, messages = init_raft_state(0, leader_log, raftrole.Role.LEADER, 6)
-    follower_a_state, _ = init_raft_state(1, follower_a_log, raftrole.Role.FOLLOWER, 6)
+    leader_state, messages = init_raft_state(1, leader_log, raftrole.Role.LEADER, 6)
+    follower_a_state, _ = init_raft_state(2, follower_a_log, raftrole.Role.FOLLOWER, 6)
 
     if follower_b_log is not None:
         follower_b_state, _ = init_raft_state(
-            2, follower_b_log, raftrole.Role.FOLLOWER, 6
+            3, follower_b_log, raftrole.Role.FOLLOWER, 6
         )
     else:
         follower_b_state = None
@@ -84,20 +84,20 @@ def init_commit_states(
 
 def test_update_indexes(paper_log: List[raftlog.LogEntry]) -> None:
     leader_state, _ = init_raft_state(
-        0,
+        1,
         paper_log,
         raftrole.Role.LEADER,
         7,
     )
 
     assert leader_state.next_index is not None
-    assert leader_state.next_index == {0: 10, 1: 10, 2: 10}
-    assert leader_state.match_index == {0: 9, 1: None, 2: None}
+    assert leader_state.next_index == {1: 10, 2: 10, 3: 10}
+    assert leader_state.match_index == {1: 9, 2: None, 3: None}
     assert leader_state.commit_index == -1
 
-    leader_state.update_indexes(1)
-    assert leader_state.next_index == {0: 10, 1: 10, 2: 10}
-    assert leader_state.match_index == {0: 9, 1: 9, 2: None}
+    leader_state.update_indexes(2)
+    assert leader_state.next_index == {1: 10, 2: 10, 3: 10}
+    assert leader_state.match_index == {1: 9, 2: 9, 3: None}
     assert leader_state.commit_index == -1
 
     (
@@ -107,14 +107,14 @@ def test_update_indexes(paper_log: List[raftlog.LogEntry]) -> None:
     assert non_null_match_index_count == 2
     assert potential_commit_index == 9
 
-    leader_state.handle_client_log_append(0, 0, "7")
-    assert leader_state.next_index == {0: 11, 1: 10, 2: 10}
-    assert leader_state.match_index == {0: 10, 1: 9, 2: None}
+    leader_state.handle_client_log_append(1, 1, "7")
+    assert leader_state.next_index == {1: 11, 2: 10, 3: 10}
+    assert leader_state.match_index == {1: 10, 2: 9, 3: None}
     assert leader_state.commit_index == -1
 
-    leader_state.update_indexes(1)
-    assert leader_state.next_index == {0: 11, 1: 11, 2: 10}
-    assert leader_state.match_index == {0: 10, 1: 10, 2: None}
+    leader_state.update_indexes(2)
+    assert leader_state.next_index == {1: 11, 2: 11, 3: 10}
+    assert leader_state.match_index == {1: 10, 2: 10, 3: None}
     assert leader_state.commit_index == 10
 
     (
@@ -126,7 +126,7 @@ def test_update_indexes(paper_log: List[raftlog.LogEntry]) -> None:
 
 
 def test_create_append_entries_arguments(paper_log: List[raftlog.LogEntry]) -> None:
-    leader_state, _ = init_raft_state(0, paper_log, raftrole.Role.LEADER, 6)
+    leader_state, _ = init_raft_state(1, paper_log, raftrole.Role.LEADER, 6)
 
     (
         current_term,
@@ -148,18 +148,18 @@ def test_handle_append_entries_request(
 ) -> None:
     # Figure 7a
     follower_state, _ = init_raft_state(
-        0, logs_by_identifier["a"], raftrole.Role.FOLLOWER, 6
+        1, logs_by_identifier["a"], raftrole.Role.FOLLOWER, 6
     )
 
     response, _ = follower_state.handle_append_entries_request(
-        0, 1, 6, 8, 6, [raftlog.LogEntry(6, "6")], -1
+        1, 2, 6, 8, 6, [raftlog.LogEntry(6, "6")], -1
     )
     assert isinstance(response[0], raftmessage.AppendEntryResponse)
     assert response[0].success
     assert response[0].entries_length == 1
 
     response, _ = follower_state.handle_append_entries_request(
-        0, 1, 6, 10, 6, [raftlog.LogEntry(6, "6")], -1
+        1, 2, 6, 10, 6, [raftlog.LogEntry(6, "6")], -1
     )
     assert isinstance(response[0], raftmessage.AppendEntryResponse)
     assert not response[0].success
@@ -168,21 +168,21 @@ def test_handle_append_entries_request(
 
 def test_handle_append_entries_response(paper_log: List[raftlog.LogEntry]) -> None:
     # Figure 7
-    leader_state, _ = init_raft_state(0, paper_log, raftrole.Role.LEADER, 6)
+    leader_state, _ = init_raft_state(1, paper_log, raftrole.Role.LEADER, 6)
 
-    response, _ = leader_state.handle_append_entries_response(1, 0, 6, False, 0)
+    response, _ = leader_state.handle_append_entries_response(2, 1, 6, False, 0)
     assert isinstance(response[0], raftmessage.AppendEntryRequest)
     assert response[0].previous_index == 8
     assert response[0].previous_term == 6
     assert response[0].entries == [raftlog.LogEntry(6, "6")]
 
-    response, _ = leader_state.handle_append_entries_response(1, 0, 6, True, 1)
+    response, _ = leader_state.handle_append_entries_response(2, 1, 6, True, 1)
     assert len(response) == 0
 
 
 def test_handle_leader_heartbeat(paper_log: List[raftlog.LogEntry]) -> None:
     # Figure 7
-    leader_state, messages = init_raft_state(0, paper_log, raftrole.Role.LEADER, 6)
+    leader_state, messages = init_raft_state(1, paper_log, raftrole.Role.LEADER, 6)
 
     assert isinstance(messages[0], raftmessage.AppendEntryRequest)
     assert messages[0].previous_index == 9
@@ -202,16 +202,16 @@ def test_handle_message_a(
     response, _ = follower_state.handle_message(request[0])
     assert not response[0].success
     assert response[0].entries_length == 0
-    assert leader_state.next_index[1] == 10
+    assert leader_state.next_index[2] == 10
 
     request, _ = leader_state.handle_message(response[0])
     response, _ = follower_state.handle_message(request[0])
     assert response[0].success
     assert response[0].entries_length == 1
-    assert leader_state.next_index[1] == 9
+    assert leader_state.next_index[2] == 9
 
     assert len(leader_state.handle_message(response[0])[0]) == 0
-    assert leader_state.next_index[1] == 10
+    assert leader_state.next_index[2] == 10
 
 
 def test_handle_message_b(
@@ -228,17 +228,17 @@ def test_handle_message_b(
 
         assert not response[0].success
         assert response[0].entries_length == i
-        assert leader_state.next_index[1] == 10 - i
+        assert leader_state.next_index[2] == 10 - i
 
         request, _ = leader_state.handle_message(response[0])
 
     response, _ = follower_state.handle_message(request[0])
     assert response[0].success
     assert response[0].entries_length == 6
-    assert leader_state.next_index[1] == 4
+    assert leader_state.next_index[2] == 4
 
     assert len(leader_state.handle_message(response[0])[0]) == 0
-    assert leader_state.next_index[1] == 10
+    assert leader_state.next_index[2] == 10
 
 
 def test_handle_message_c(
@@ -253,10 +253,10 @@ def test_handle_message_c(
     response, _ = follower_state.handle_message(request[0])
     assert response[0].success
     assert response[0].entries_length == 0
-    assert leader_state.next_index[1] == 10
+    assert leader_state.next_index[2] == 10
 
     assert len(leader_state.handle_message(response[0])[0]) == 0
-    assert leader_state.next_index[1] == 10
+    assert leader_state.next_index[2] == 10
 
 
 def test_handle_message_d(
@@ -271,10 +271,10 @@ def test_handle_message_d(
     response, _ = follower_state.handle_message(request[0])
     assert response[0].success
     assert response[0].entries_length == 0
-    assert leader_state.next_index[1] == 10
+    assert leader_state.next_index[2] == 10
 
     assert len(leader_state.handle_message(response[0])[0]) == 0
-    assert leader_state.next_index[1] == 10
+    assert leader_state.next_index[2] == 10
 
 
 def test_handle_message_e(
@@ -286,24 +286,24 @@ def test_handle_message_e(
         paper_log, logs_by_identifier["e"], None
     )
 
-    request, _ = leader_state.handle_message(raftmessage.UpdateFollowers(0, 0, [1]))
+    request, _ = leader_state.handle_message(raftmessage.UpdateFollowers(1, 1, [2]))
 
     for i in range(5):
         response, _ = follower_state.handle_message(request[0])
 
         assert not response[0].success
         assert response[0].entries_length == i
-        assert leader_state.next_index[1] == 10 - i
+        assert leader_state.next_index[2] == 10 - i
 
         request, _ = leader_state.handle_message(response[0])
 
     response, _ = follower_state.handle_message(request[0])
     assert response[0].success
     assert response[0].entries_length == 5
-    assert leader_state.next_index[1] == 5
+    assert leader_state.next_index[2] == 5
 
     assert len(leader_state.handle_message(response[0])[0]) == 0
-    assert leader_state.next_index[1] == 10
+    assert leader_state.next_index[2] == 10
 
 
 def test_handle_message_f(
@@ -320,17 +320,17 @@ def test_handle_message_f(
 
         assert not response[0].success
         assert response[0].entries_length == i
-        assert leader_state.next_index[1] is 10 - i
+        assert leader_state.next_index[2] is 10 - i
 
         request, _ = leader_state.handle_message(response[0])
 
     response, _ = follower_state.handle_message(request[0])
     assert response[0].success
     assert response[0].entries_length == 7
-    assert leader_state.next_index[1] == 3
+    assert leader_state.next_index[2] == 3
 
     assert len(leader_state.handle_message(response[0])[0]) == 0
-    assert leader_state.next_index[1] == 10
+    assert leader_state.next_index[2] == 10
 
 
 def test_consensus(
@@ -341,20 +341,20 @@ def test_consensus(
         paper_log, logs_by_identifier["a"], logs_by_identifier["b"]
     )
 
-    assert leader_state.next_index == {0: 10, 1: 10, 2: 10}
-    assert leader_state.match_index == {0: 9, 1: None, 2: None}
+    assert leader_state.next_index == {1: 10, 2: 10, 3: 10}
+    assert leader_state.match_index == {1: 9, 2: None, 3: None}
     assert leader_state.commit_index == -1
 
     response_a, _ = follower_a_state.handle_message(request[0])
     request_a, _ = leader_state.handle_message(response_a[0])
-    assert leader_state.next_index == {0: 10, 1: 9, 2: 10}
-    assert leader_state.match_index == {0: 9, 1: None, 2: None}
+    assert leader_state.next_index == {1: 10, 2: 9, 3: 10}
+    assert leader_state.match_index == {1: 9, 2: None, 3: None}
     assert leader_state.commit_index == -1
 
     response_a, _ = follower_a_state.handle_message(request_a[0])
     leader_state.handle_message(response_a[0])
-    assert leader_state.next_index == {0: 10, 1: 10, 2: 10}
-    assert leader_state.match_index == {0: 9, 1: 9, 2: None}
+    assert leader_state.next_index == {1: 10, 2: 10, 3: 10}
+    assert leader_state.match_index == {1: 9, 2: 9, 3: None}
     assert leader_state.commit_index == 9
 
     response_b, _ = follower_b_state.handle_message(request[1])
@@ -362,15 +362,15 @@ def test_consensus(
     for i in range(6):
         request_b, _ = leader_state.handle_message(response_b[0])
 
-        assert leader_state.next_index == {0: 10, 1: 10, 2: 9 - i}
-        assert leader_state.match_index == {0: 9, 1: 9, 2: None}
+        assert leader_state.next_index == {1: 10, 2: 10, 3: 9 - i}
+        assert leader_state.match_index == {1: 9, 2: 9, 3: None}
         assert leader_state.commit_index == 9
 
         response_b, _ = follower_b_state.handle_message(request_b[0])
 
     leader_state.handle_message(response_b[0])
-    assert leader_state.next_index == {0: 10, 1: 10, 2: 10}
-    assert leader_state.match_index == {0: 9, 1: 9, 2: 9}
+    assert leader_state.next_index == {1: 10, 2: 10, 3: 10}
+    assert leader_state.match_index == {1: 9, 2: 9, 3: 9}
     assert leader_state.commit_index == 9
 
     request, _ = leader_state.handle_leader_heartbeat(0, 0, [1, 2])
@@ -388,17 +388,17 @@ def test_handle_vote_request(
     """
     # TODO: Carve out become_candidate to own test.
     candidate_state, _ = init_raft_state(
-        0, logs_by_identifier["c"], raftrole.Role.FOLLOWER, 6
+        1, logs_by_identifier["c"], raftrole.Role.FOLLOWER, 6
     )
     assert candidate_state.role == raftrole.Role.FOLLOWER
     assert candidate_state.current_term == 6
     assert candidate_state.voted_for is None
 
     raftstate.change_role_from_follower_to_candidate(candidate_state)
-    request, _ = candidate_state.handle_candidate_solicitation(0, 0)
+    request, _ = candidate_state.handle_candidate_solicitation(1, 1)
     assert candidate_state.role == raftrole.Role.CANDIDATE
     assert candidate_state.current_term == 7
-    assert candidate_state.voted_for == 0
+    assert candidate_state.voted_for == 1
 
     # Figure 7a
     follower_a_state, _ = init_raft_state(
@@ -465,12 +465,12 @@ def test_handle_vote_response(
     Set up with candidate state as per Figure 7c.
     """
     candidate_state, request = init_raft_state(
-        0, logs_by_identifier["c"], raftrole.Role.CANDIDATE, 7
+        1, logs_by_identifier["c"], raftrole.Role.CANDIDATE, 7
     )
 
     # Figure 7d
     follower_d_state, _ = init_raft_state(
-        1, logs_by_identifier["d"], raftrole.Role.FOLLOWER, 6
+        2, logs_by_identifier["d"], raftrole.Role.FOLLOWER, 6
     )
 
     response, _ = follower_d_state.handle_message(request[0])
@@ -483,24 +483,24 @@ def test_handle_vote_response(
     assert change_role is None
     assert candidate_state.role == raftrole.Role.CANDIDATE
     assert candidate_state.current_term == 7
-    assert candidate_state.voted_for == 0
+    assert candidate_state.voted_for == 1
 
     # Figure 7a
     follower_a_state, _ = init_raft_state(
-        2, logs_by_identifier["a"], raftrole.Role.FOLLOWER, 6
+        3, logs_by_identifier["a"], raftrole.Role.FOLLOWER, 6
     )
 
     response, _ = follower_a_state.handle_message(request[1])
     assert isinstance(response[0], raftmessage.RequestVoteResponse)
     assert response[0].success
     assert response[0].current_term == 7
-    assert follower_a_state.voted_for == 0
+    assert follower_a_state.voted_for == 1
 
     _, change_role = candidate_state.handle_message(response[0])
     assert change_role == (raftrole.Role.CANDIDATE, raftrole.Role.LEADER)
     assert candidate_state.role == raftrole.Role.LEADER
     assert candidate_state.current_term == 7
-    assert candidate_state.voted_for == 0
+    assert candidate_state.voted_for == 1
 
 
 def test_commit_with_requirement() -> None:
