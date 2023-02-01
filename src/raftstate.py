@@ -460,9 +460,11 @@ class RaftState:
         )
         self.implement_state_change(state_change)
 
+        messages: List[raftmessage.Message] = []
+
         # If not candidate, then early return with no log changes.
         if self.role != raftrole.Role.CANDIDATE:
-            return [], state_change["role_change"]
+            return messages, state_change["role_change"]
 
         if success:
             assert self.current_votes is not None
@@ -477,7 +479,9 @@ class RaftState:
                 )
                 self.implement_state_change(state_change)
 
-        return [], state_change["role_change"]
+                messages += self.handle_leader_heartbeat()[0]
+
+        return messages, state_change["role_change"]
 
     def handle_role_change_on_timeout(
         self,

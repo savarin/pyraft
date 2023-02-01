@@ -92,15 +92,6 @@ class RaftServer:
                 response, role_change = self.state.handle_message(request)
 
                 match role_change:
-                    case (raftrole.Role.CANDIDATE, raftrole.Role.LEADER):
-                        assert len(response) == 0
-                        message = raftmessage.UpdateFollowers(
-                            self.identifier, self.identifier, followers
-                        )
-                        self.node.send(
-                            message.target, raftmessage.encode_message(message)
-                        )
-
                     case (raftrole.Role.FOLLOWER, raftrole.Role.CANDIDATE):
                         assert len(response) == 0
                         message = raftmessage.RunElection(
