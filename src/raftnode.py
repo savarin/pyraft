@@ -102,8 +102,8 @@ class RaftNode:
     def deliver(self, identifier: int) -> None:
         """
         Run in background thread to deliver outgoing messages to other nodes.
-        The delivery is best-effort attempt, in which the message is discarded
-        if the remote server is not operational.
+        The delivery is best-efforts, in which the message is discarded if the
+        remote server is not operational.
         """
         sock = None
         address = raftconfig.ADDRESS_BY_IDENTIFIER[identifier]

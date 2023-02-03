@@ -8,6 +8,16 @@ append_entries operation is subject to a number of constraints.
   also known as the log-continuity condition.
 - If entries have a term number less than the term of the entry to be replaced,
   the entries with the smaller term and successive ones are deleted.
+
+
+AppendEntries RPCs section in Figure 2 of Raft paper:
+
+Receiver implementation:
+ 2. Reply false if log doesn’t contain an entry at prevLogIndex whose term
+    matches prevLogTerm (§5.3)
+ 3. If an existing entry conflicts with a new one (same index but different
+    terms), delete the existing entry and all that follow it (§5.3)
+ 4. Append any new entries not already in the log
 """
 
 from typing import List
@@ -27,9 +37,6 @@ class LogEntry:
 
 
 def is_equal_entry(log: List[LogEntry], previous_index: int, entry: LogEntry) -> bool:
-    """
-    Check entries are equal.
-    """
     if previous_index < len(log) - 1 and log[previous_index + 1] != entry:
         return False
 
@@ -51,9 +58,8 @@ def append_entries(
         return False
 
     # If term number of existing entry is less than term of entry to be
-    # replaced, remove that entry and following entries. Discussed in
-    # Figure 2 of the Raft paper, conflict resolved by the later term as
-    # there can only be one leader.
+    # replaced, remove that entry and following entries. Conflict resolved by
+    # using the later term as truth since there can only be one leader.
     for n, entry in enumerate(entries, start=previous_index + 1):
         if n < len(log) and log[n].term != entry.term:
             del log[n:]

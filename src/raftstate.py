@@ -1,6 +1,62 @@
 """
 Layer around the core append_entries operation to keep state of the log and
-handle well-defined events.
+handle events.
+
+
+State section in Figure 2 of Raft paper (minor divergence from 1-indexing in
+paper vs 0-indexing implementation):
+
+Persistent state on all servers:
+currentTerm     latest term server has seen (initialized to 0 on first boot,
+                increases monotonically)
+votedFor        candidateId that received vote in current term (or null if none)
+log[]           log entries; each entry contains command for state machine, and
+                term when entry was received by leader (first index is 1)
+
+Volatile state on all servers:
+commitIndex     index of highest log entry known to be committed (initialized to
+                0, increases monotonically)
+lastApplied     index of highest log entry applied to state machine (initialized
+                to 0, increases monotonically)
+
+Volatile state on leaders:
+nextIndex[]     for each server, index of the next log entry to send to that
+                server (initialized to leader last log index + 1)
+matchIndex[]    for each server, index of highest log entry known to be
+                replicated on server (initialized to 0, increases monotonically)
+
+
+AppendEntries RPCs section in Figure 2 of Raft paper:
+
+Receiver implementation:
+ 1. Reply false if term < currentTerm (§5.1)
+ 5. If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of
+    last new entry)
+
+
+RequestVote RPCs section in Figure 2 of Raft paper:
+
+Receiver implementation:
+ 1. Reply false if term < currentTerm (§5.1)
+ 2. If votedFor is null or candidateId, and candidate’s log is at least as
+    up-to-date as receiver’s log, grant vote (§5.2, §5.4)
+
+
+Rules for Servers section in Figure 2 of Raft paper:
+
+Candidates (§5.2):
+- If election timeout elapses: start new election
+
+Leaders:
+- Upon election: send initial empty AppendEntries RPCs (heartbeat) to each
+  server; repeat during idle periods to prevent election timeouts (§5.2)
+- If last log index ≥ nextIndex for a follower: send AppendEntries RPC with log
+  entries starting at nextIndex
+  - If successful: update nextIndex and matchIndex for follower (§5.3)
+  - If AppendEntries fails because of log inconsistency: decrement nextIndex and
+    retry (§5.3)
+- If there exists an N such that N > commitIndex, a majority of matchIndex[i] ≥
+  N, and log[N].term == currentTerm: set commitIndex = N (§5.3, §5.4).
 """
 from typing import Dict, List, Optional, Tuple
 import dataclasses
@@ -28,9 +84,7 @@ class RaftState:
         self.config: Dict[int, Tuple[str, int]] = raftconfig.ADDRESS_BY_IDENTIFIER
         self.experimental_mode: bool = False
 
-    ###
     ###   MULTI-PURPOSE HELPERS
-    ###
 
     def count_majority(self) -> int:
         return 1 + len(self.config) // 2
@@ -93,9 +147,7 @@ class RaftState:
                 self.current_votes = {identifier: None for identifier in self.config}
                 self.current_votes[self.identifier] = self.identifier
 
-    ###
-    ###   CLIENT-RELATED HELPERS AND HANDLERS
-    ###
+    ###   CLIENT-RELATED HANDLER
 
     def handle_client_log_append(
         self, source: int, target: int, item: str
@@ -114,9 +166,7 @@ class RaftState:
 
         return []
 
-    ###
     ###   LEADER-RELATED HELPERS AND HANDLERS
-    ###
 
     def create_append_entries_arguments(
         self, target: int
@@ -306,9 +356,7 @@ class RaftState:
             )
         ]
 
-    ###
     ###   CANDIDATE-RELATED HELPERS AND HANDLERS
-    ###
 
     def count_self_votes(self) -> int:
         assert self.current_votes is not None
@@ -317,16 +365,6 @@ class RaftState:
                 identifier
                 for identifier in self.current_votes.values()
                 if identifier == self.identifier
-            ]
-        )
-
-    def count_null_votes(self) -> int:
-        assert self.current_votes is not None
-        return len(
-            [
-                identifier
-                for identifier in self.current_votes.values()
-                if identifier is None
             ]
         )
 
@@ -455,9 +493,7 @@ class RaftState:
 
         return []
 
-    ###
-    ###   ROLE CHANGE-RELATED HELPERS AND HANDLERS
-    ###
+    ###   ROLE CHANGE-RELATED HELPER AND HANDLER
 
     def change_role(
         self,
@@ -514,9 +550,7 @@ class RaftState:
                     f"Role change from {from_role} to {to_role} on timeout not supported."
                 )
 
-    ###
-    ###   CUSTOM HELPERS AND HANDLERS
-    ###
+    ###   CUSTOM HANDLERS
 
     def handle_text(
         self, source: int, target: int, text: str
@@ -532,9 +566,7 @@ class RaftState:
 
         return []
 
-    ###
-    ###   PUBLIC INTERFACE TO HANDLERS
-    ###
+    ###   PUBLIC INTERFACE
 
     def handle_message(self, message: raftmessage.Message) -> List[raftmessage.Message]:
         match message:
@@ -572,6 +604,10 @@ class RaftState:
 
 
 def change_state_on_timeout(state: RaftState) -> raftmessage.Message:
+    """
+    Carved out from class as state change on timeout is called from RaftServer
+    rather than RaftState.
+    """
     match state.role:
         case raftrole.Role.FOLLOWER:
             return raftmessage.RoleChange(

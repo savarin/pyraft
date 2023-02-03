@@ -1,3 +1,42 @@
+"""
+Messages as a thin-layered class to simplify events-based interaction.
+
+
+Relevant items from AppendEntries RPCs section in Figure 2 of Raft paper:
+
+Invoked by leader to replicate log entries (§5.3); also used as heartbeat
+(§5.2).
+
+Arguments:
+term            leader’s term
+leaderId
+prevLogIndex    index of log entry immediately preceding new ones
+prevLogTerm     term of prevLogIndex entry
+entries[]       log entries to store (empty for heartbeat; may send more than
+                one for efficiency)
+leaderCommit    leader’s commitIndex
+
+Results:
+term            currentTerm, for leader to update itself
+success         true if follower contained entry matching prevLogIndex and
+                prevLogTerm
+
+
+Relevant items from RequestVote RPCs section in Figure 2 of Raft paper:
+
+Invoked by candidates to gather votes (§5.2).
+
+Arguments:
+term            candidate’s term
+candidateId     candidate requesting vote
+lastLogIndex    index of candidate’s last log entry (§5.4)
+lastLogTerm     term of candidate’s last log entry (§5.4)
+
+Results:
+term            currentTerm, for candidate to update itself
+voteGranted     true means candidate received vote
+"""
+
 from typing import List
 import dataclasses
 import enum

@@ -1,3 +1,7 @@
+"""
+Combines state, network runtime and timer to act as a single Raft server.
+"""
+
 from typing import List
 import dataclasses
 import os
@@ -45,7 +49,7 @@ class RaftServer:
 
         # Allow state change only when reset flag is set to True. This will
         # happen at the end of each cycle unless a leader heartbeat or follower
-        # vote is received.
+        # vote request/response is received.
         if self.reset:
             message = raftstate.change_state_on_timeout(self.state)
             self.node.incoming.put(raftmessage.encode_message(message))
@@ -69,15 +73,12 @@ class RaftServer:
                 # If receive leader heartbeat or vote request/response, set
                 # reset flag to False to disable follower role change in the
                 # current cycle.
-                match (self.state.role, type(request)):
-                    case (raftrole.Role.FOLLOWER, raftmessage.AppendEntryRequest):
-                        self.reset = False
-
-                    case (raftrole.Role.FOLLOWER, raftmessage.RequestVoteRequest):
-                        self.reset = False
-
-                    case (raftrole.Role.CANDIDATE, raftmessage.RequestVoteResponse):
-                        self.reset = False
+                if (self.state.role, type(request)) in [
+                    (raftrole.Role.FOLLOWER, raftmessage.AppendEntryRequest),
+                    (raftrole.Role.FOLLOWER, raftmessage.RequestVoteRequest),
+                    (raftrole.Role.CANDIDATE, raftmessage.RequestVoteResponse),
+                ]:
+                    self.reset = False
 
                 if not isinstance(request, raftmessage.Text):
                     print(self.color() + f"\n{request.target} > ", end="")

@@ -1,62 +1,27 @@
 """
-starts up - follower
-
-follower
-- if timeout, move to candidate
-
-candidate
-- if timeout, restart election
-- if win election, become leader
-- if discovers current leader or higher term, become follower
-
-leader
-- if discover higher term, become follower
+Codification of roles and state attributes. In other words, state attributes
+either need to be initialized or reset on role changes; the enumeration here
+acts as constraints.
 
 
-follower > candidate
-- current_term += 1
-- voted_for to self
-- initialize current_votes
-- hold - commit_index
-- set to None - next_index, match_index
+Rules for Servers section in Figure 2 of Raft paper:
 
-candidate > leader
-- hold current term
-- hold voted_for
-- hold current_votes
-- hold commit_index
-- initialize next_index, match_index
+All Servers:
+- If RPC request or response contains term T > currentTerm: set currentTerm = T,
+  convert to follower (§5.1)
 
-leader > follower, because discover higher term
-- set term to new higher term
-- set voted_for to None
-- set current_votes to None
-- reset commit_index because not safe
-- reset next_index, match_index to None
+Followers (§5.2):
+- If election timeout elapses without receiving AppendEntries RPC from current
+  leader or granting vote to candidate: convert to candidate
 
-candidate > follower, because discover new leader with same term
-- hold term
-- hold voted_for
-- set current_votes to None
-- hold commit_index
-- set to None - next_index, match_index
-
-candidate > follower, because discover new leader with same term
-- increase term
-- set voted_for to None
-- set current_votes to None
-- hold commit_index
-- set to None - next_index, match_index
-
-
-     -1     term            increase when see higher, otherwise hold
-None        commit_index    reset only when leader > follower
-
-None self   voted_for       reset only when increase term
-None {None} current_votes   only not None when become candidate
-
-None {1}    next_index      only not None as leader, initialize to len(log)
-None {None} match_index     only not None as leader, initialize to None
+Candidates (§5.2):
+- On conversion to candidate, start election:
+  - Increment currentTerm
+  - Vote for self
+  - Reset election timer
+  - Send RequestVote RPCs to all other servers
+- If votes received from majority of servers: become leader
+- If AppendEntries RPC received from new leader: convert to follower
 """
 from typing import Optional, Tuple, TypedDict
 import enum

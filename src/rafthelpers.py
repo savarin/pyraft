@@ -1,3 +1,6 @@
+"""
+Encoding and decoding with Bencode.
+"""
 import builtins
 import re
 

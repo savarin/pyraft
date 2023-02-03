@@ -1,3 +1,8 @@
+"""
+Client to enable sending of append entries and expose state instructions to the
+Raft server.
+"""
+
 from typing import List
 import dataclasses
 import sys
