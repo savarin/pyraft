@@ -5,8 +5,6 @@ handle well-defined events.
 from typing import Dict, List, Optional, Tuple
 import dataclasses
 
-import colorama
-
 import raftconfig
 import raftlog
 import raftmessage
@@ -520,9 +518,6 @@ class RaftState:
     ###   CUSTOM HELPERS AND HANDLERS
     ###
 
-    def color(self):
-        return raftrole.color(self.role)
-
     def handle_text(
         self, source: int, target: int, text: str
     ) -> List[raftmessage.Message]:
@@ -533,7 +528,7 @@ class RaftState:
             text = "\n".join(
                 [f"{item[0]}: {str(item[1])}" for item in sorted(vars(self).items())]
             )
-            print("\n\n" + colorama.Fore.WHITE + text)
+            print("\n\n" + "\033[37m" + text)
 
         return []
 

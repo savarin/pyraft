@@ -23,7 +23,7 @@ class RaftServer:
         self.state: raftstate.RaftState = raftstate.RaftState(self.identifier)
         self.node: raftnode.RaftNode = raftnode.RaftNode(self.identifier)
         self.timer: threading.Timer = threading.Timer(TIMEOUT, self.timeout)
-        self.reset: bool = False
+        self.reset: bool = True
 
     def send(self, messages: List[raftmessage.Message]) -> None:
         for message in messages:
